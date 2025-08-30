@@ -25,6 +25,7 @@ allprojects {
         format("license", {
             licenseHeaderFile("${rootProject.file("formatter/license-header.txt")}", "package ");
             target("src/*/java/**/*.java","qa/*/java/**/*.java")
+            targetExclude('**/package-info.java')
         })
     }
 }

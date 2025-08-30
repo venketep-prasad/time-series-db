@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -15,7 +14,7 @@ import java.io.IOException;
 
 /**
  * Sample implementation that stores sum and count for average push down optimization.
- * 
+ *
  * @param getTimestamp the timestamp of the sample
  * @param sum the sum of all values
  * @param count the number of values
@@ -34,12 +33,12 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Returns the average value (sum / count).
-     * 
+     *
      * <p>Follows Prometheus/M3 behavior for division by zero:
      * - Returns +Inf for positive sum with zero count
-     * - Returns -Inf for negative sum with zero count  
+     * - Returns -Inf for negative sum with zero count
      * - Returns NaN for zero sum with zero count</p>
-     * 
+     *
      * @return the average value, or infinity/NaN for division by zero
      */
     public double getAverage() {
@@ -62,7 +61,7 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Adds another SumCountSample to this one.
-     * 
+     *
      * @param other the sample to add
      * @return a new SumCountSample with combined sum and count
      */
@@ -72,7 +71,7 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Adds a single value to this sample.
-     * 
+     *
      * @param value the value to add
      * @return a new SumCountSample with the value added to sum and count incremented
      */
@@ -90,7 +89,7 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Create a new SumCountSample by adding a single value (convenience method for building from TimeSeries).
-     * 
+     *
      * @param timestamp the timestamp
      * @param value the value
      * @return a new SumCountSample
@@ -101,7 +100,7 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Convert any sample type to SumCountSample for averaging operations.
-     * 
+     *
      * @param sample the sample to convert
      * @return a SumCountSample representation
      * @throws IllegalArgumentException if the sample type is not supported
@@ -139,7 +138,7 @@ public record SumCountSample(long getTimestamp, double sum, long count) implemen
 
     /**
      * Create a SumCountSample instance from the input stream for deserialization.
-     * 
+     *
      * @param in the input stream
      * @param timestamp the timestamp
      * @return a new SumCountSample

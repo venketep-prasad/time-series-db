@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -27,7 +26,7 @@ public class FloatSample implements Sample {
 
     /**
      * Constructs a new FloatSample with the specified timestamp and value.
-     * 
+     *
      * @param timestamp the timestamp of the sample
      * @param value the floating-point value
      */
@@ -53,7 +52,7 @@ public class FloatSample implements Sample {
 
     /**
      * Returns the floating-point value of this sample.
-     * 
+     *
      * @return the value
      */
     public double getValue() {
@@ -77,7 +76,7 @@ public class FloatSample implements Sample {
 
     /**
      * Create a FloatSample instance from the input stream for deserialization.
-     * 
+     *
      * @param in the input stream
      * @param timestamp the timestamp
      * @return a new FloatSample
@@ -93,8 +92,7 @@ public class FloatSample implements Sample {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         FloatSample that = (FloatSample) o;
-        return timestamp == that.timestamp &&
-               Double.compare(that.value, value) == 0;
+        return timestamp == that.timestamp && Double.compare(that.value, value) == 0;
     }
 
     @Override
@@ -104,9 +102,6 @@ public class FloatSample implements Sample {
 
     @Override
     public String toString() {
-        return "FloatSample{" +
-                "timestamp=" + timestamp +
-                ", value=" + value +
-                '}';
+        return "FloatSample{" + "timestamp=" + timestamp + ", value=" + value + '}';
     }
 }

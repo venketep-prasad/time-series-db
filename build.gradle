@@ -99,6 +99,13 @@ publishing {
     }
 }
 
+spotless {
+  java {
+    licenseHeaderFile 'formatter/license-header.txt'
+    targetExclude '**/package-info.java'
+  }
+}
+
 // This requires an additional Jar not published as part of build-tools
 loggerUsageCheck.enabled = false
 
@@ -159,4 +166,7 @@ jacocoTestCoverageVerification {
         }
     }
 }
+
+
+tasks.named("precommit").configure { dependsOn("spotlessCheck") }
 tasks.named("check").configure { dependsOn(jacocoTestCoverageVerification) }

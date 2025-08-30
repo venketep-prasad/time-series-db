@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -28,7 +27,7 @@ public enum SampleType implements Writeable {
 
     /**
      * Constructs a SampleType with the specified ID.
-     * 
+     *
      * @param id the byte identifier
      */
     SampleType(byte id) {
@@ -37,7 +36,7 @@ public enum SampleType implements Writeable {
 
     /**
      * Returns the byte identifier for this sample type.
-     * 
+     *
      * @return the byte ID
      */
     public byte getId() {
@@ -76,4 +75,4 @@ public enum SampleType implements Writeable {
         }
         throw new IllegalArgumentException("Unknown sample type ID: " + id);
     }
-} 
+}

@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
@@ -68,21 +67,37 @@ public class SumCountSampleTests extends OpenSearchTestCase {
         // Create a mock sample that's not FloatSample or SumCountSample
         Sample mockSample = new Sample() {
             @Override
-            public long getTimestamp() { return 1000L; }
+            public long getTimestamp() {
+                return 1000L;
+            }
+
             @Override
-            public ValueType valueType() { return ValueType.FLOAT64; }
+            public ValueType valueType() {
+                return ValueType.FLOAT64;
+            }
+
             @Override
-            public SampleType getSampleType() { return SampleType.FLOAT_SAMPLE; }
+            public SampleType getSampleType() {
+                return SampleType.FLOAT_SAMPLE;
+            }
+
             @Override
-            public double getValue() { return 42.5; }
+            public double getValue() {
+                return 42.5;
+            }
+
             @Override
-            public Sample merge(Sample other) { throw new UnsupportedOperationException(); }
+            public Sample merge(Sample other) {
+                throw new UnsupportedOperationException();
+            }
+
             @Override
-            public void writeTo(org.opensearch.core.common.io.stream.StreamOutput out) throws IOException { throw new UnsupportedOperationException(); }
+            public void writeTo(org.opensearch.core.common.io.stream.StreamOutput out) throws IOException {
+                throw new UnsupportedOperationException();
+            }
         };
 
-        IllegalArgumentException e = expectThrows(IllegalArgumentException.class,
-            () -> SumCountSample.fromSample(mockSample));
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> SumCountSample.fromSample(mockSample));
         assertTrue(e.getMessage().contains("Unsupported sample type"));
     }
 
@@ -128,16 +143,14 @@ public class SumCountSampleTests extends OpenSearchTestCase {
         SumCountSample sumCountSample = new SumCountSample(1000L, 50.0, 2);
         FloatSample floatSample = new FloatSample(1000L, 25.0);
 
-        IllegalArgumentException e = expectThrows(IllegalArgumentException.class,
-            () -> sumCountSample.merge(floatSample));
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> sumCountSample.merge(floatSample));
         assertEquals("Cannot merge SumCountSample with FloatSample", e.getMessage());
     }
 
     public void testMergeWithNull() {
         SumCountSample sample = new SumCountSample(1000L, 50.0, 2);
 
-        NullPointerException e = expectThrows(NullPointerException.class,
-            () -> sample.merge(null));
+        NullPointerException e = expectThrows(NullPointerException.class, () -> sample.merge(null));
     }
 
     public void testSerializationAndDeserialization() throws IOException {
@@ -242,11 +255,11 @@ public class SumCountSampleTests extends OpenSearchTestCase {
         // Test positive sum with zero count - should return +Inf per Prometheus/M3
         SumCountSample positiveSample = new SumCountSample(1000L, 100.0, 0);
         assertEquals(Double.POSITIVE_INFINITY, positiveSample.getAverage(), 0.001);
-        
+
         // Test negative sum with zero count - should return -Inf per Prometheus/M3
         SumCountSample negativeSample = new SumCountSample(1000L, -100.0, 0);
         assertEquals(Double.NEGATIVE_INFINITY, negativeSample.getAverage(), 0.001);
-        
+
         // Test zero sum with zero count - should return NaN per Prometheus/M3
         SumCountSample zeroSample = new SumCountSample(1000L, 0.0, 0);
         assertTrue(Double.isNaN(zeroSample.getAverage()));

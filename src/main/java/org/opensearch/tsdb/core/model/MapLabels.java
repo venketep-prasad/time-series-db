@@ -1,8 +1,10 @@
 /*
- * Copyright OpenSearch Contributors
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * The OpenSearch Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.common.hash.MurmurHash3;
@@ -21,7 +23,7 @@ public class MapLabels implements Labels {
 
     /**
      * Constructs a new MapLabels instance with the specified label map.
-     * 
+     *
      * @param labels the map containing label key-value pairs
      */
     public MapLabels(Map<String, String> labels) {
@@ -30,7 +32,7 @@ public class MapLabels implements Labels {
 
     /**
      * Creates a MapLabels instance from an array of strings representing key-value pairs.
-     * 
+     *
      * @param labels array of strings in key-value pairs (e.g., "key1", "value1", "key2", "value2")
      * @return a new MapLabels instance containing the specified labels
      * @throws IllegalArgumentException if the number of strings is odd
@@ -48,7 +50,7 @@ public class MapLabels implements Labels {
 
     /**
      * Creates an empty MapLabels instance.
-     * 
+     *
      * @return an empty MapLabels instance
      */
     public static MapLabels emptyLabels() {
@@ -57,7 +59,7 @@ public class MapLabels implements Labels {
 
     /**
      * Converts the labels to a key-value string format.
-     * 
+     *
      * @return a string representation of the labels in key:value format
      */
     @Override
@@ -78,7 +80,7 @@ public class MapLabels implements Labels {
 
     /**
      * Returns an unmodifiable view of the labels as a Map.
-     * 
+     *
      * @return an unmodifiable map view of the labels
      */
     @Override
@@ -88,7 +90,7 @@ public class MapLabels implements Labels {
 
     /**
      * Checks if the labels collection is empty.
-     * 
+     *
      * @return true if there are no labels, false otherwise
      */
     @Override
@@ -98,7 +100,7 @@ public class MapLabels implements Labels {
 
     /**
      * Retrieves the value for a specific label name.
-     * 
+     *
      * @param name the label name to look up
      * @return the label value, or an empty string if the label doesn't exist
      */
@@ -109,7 +111,7 @@ public class MapLabels implements Labels {
 
     /**
      * Checks if a label with the specified name exists.
-     * 
+     *
      * @param name the label name to check
      * @return true if a label with the given name exists, false otherwise
      */
@@ -122,7 +124,7 @@ public class MapLabels implements Labels {
      * Computes a stable hash value for the labels.
      * FIXME: this is not stable yet, need to iterate on it
      * <p>The hash is cached after the first computation for performance.</p>
-     * 
+     *
      * @return a stable hash value for the labels
      */
     @Override
@@ -147,7 +149,7 @@ public class MapLabels implements Labels {
 
     /**
      * Compares this MapLabels instance with another object for equality.
-     * 
+     *
      * @param o the object to compare with
      * @return true if the objects are equal, false otherwise
      */
@@ -160,7 +162,7 @@ public class MapLabels implements Labels {
 
     /**
      * Computes the hash code for this MapLabels instance.
-     * 
+     *
      * @return the hash code for this instance
      */
     @Override
@@ -171,7 +173,7 @@ public class MapLabels implements Labels {
 
     /**
      * Returns a string representation of this MapLabels instance.
-     * 
+     *
      * @return a string representation of the labels
      */
     @Override

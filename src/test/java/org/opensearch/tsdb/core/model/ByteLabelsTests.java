@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.test.OpenSearchTestCase;
@@ -25,12 +24,12 @@ public class ByteLabelsTests extends OpenSearchTestCase {
         assertFalse(labels.has(null));
         assertFalse(labels.has(""));
         assertFalse(labels.isEmpty());
-        
+
         // Test toKeyValueString
         String kvString = labels.toKeyValueString();
         assertTrue("Should contain k1:v1", kvString.contains("k1:v1"));
         assertTrue("Should contain k2:v2", kvString.contains("k2:v2"));
-        
+
         // Test toString
         assertEquals("toString should match toKeyValueString", kvString, labels.toString());
     }
@@ -73,13 +72,13 @@ public class ByteLabelsTests extends OpenSearchTestCase {
         // Create a string longer than 254 bytes to test extended encoding
         String longKey = "very_long_key_" + "x".repeat(250);
         String longValue = "very_long_value_" + "y".repeat(250);
-        
+
         ByteLabels labels = ByteLabels.fromStrings(longKey, longValue, "short", "val");
-        
+
         assertEquals(longValue, labels.get(longKey));
         assertEquals("val", labels.get("short"));
         assertTrue(labels.has(longKey));
-        
+
         // Verify it works with fromMap too
         ByteLabels labels2 = ByteLabels.fromMap(java.util.Map.of(longKey, longValue, "short", "val"));
         assertEquals(labels, labels2);
@@ -89,11 +88,11 @@ public class ByteLabelsTests extends OpenSearchTestCase {
         ByteLabels labels1 = ByteLabels.fromStrings("a", "1", "b", "2");
         ByteLabels labels2 = ByteLabels.fromStrings("b", "2", "a", "1"); // Different order
         ByteLabels labels3 = ByteLabels.fromStrings("a", "1", "b", "3"); // Different value
-        
+
         // Test equals
         assertEquals("Same labels should be equal", labels1, labels2);
         assertNotEquals("Different labels should not be equal", labels1, labels3);
-        
+
         // Test hashCode consistency
         assertEquals("Equal objects should have same hashCode", labels1.hashCode(), labels2.hashCode());
     }

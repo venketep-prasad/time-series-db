@@ -5,7 +5,6 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-
 package org.opensearch.tsdb.core.model;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
@@ -74,16 +73,14 @@ public class FloatSampleTests extends OpenSearchTestCase {
         FloatSample floatSample = new FloatSample(1000L, 10.0);
         SumCountSample sumCountSample = new SumCountSample(1000L, 20.0, 2);
 
-        IllegalArgumentException e = expectThrows(IllegalArgumentException.class,
-            () -> floatSample.merge(sumCountSample));
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> floatSample.merge(sumCountSample));
         assertEquals("Cannot merge FloatSample with SumCountSample", e.getMessage());
     }
 
     public void testMergeWithNull() {
         FloatSample sample = new FloatSample(1000L, 10.0);
 
-        NullPointerException e = expectThrows(NullPointerException.class,
-            () -> sample.merge(null));
+        NullPointerException e = expectThrows(NullPointerException.class, () -> sample.merge(null));
     }
 
     public void testSerializationAndDeserialization() throws IOException {
