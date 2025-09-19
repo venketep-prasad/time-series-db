@@ -1,0 +1,196 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The OpenSearch Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+package org.opensearch.tsdb.query.stage;
+
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.tsdb.lang.m3.stage.ScaleStage;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.function.Function;
+
+/**
+ * Factory class for creating pipeline stage instances from string definitions.
+ *
+ * <p>This factory provides a centralized way to create and register pipeline stage types.
+ * It supports both unary and binary pipeline stages, allowing for flexible pipeline
+ * configuration through string-based definitions.</p>
+ *
+ * <h2>Supported Stage Types:</h2>
+ * <ul>
+ *   <li><strong>Unary Stages:</strong> scale</li>
+ * </ul>
+ *
+ * <h2>Usage Examples:</h2>
+ * <pre>{@code
+ * // Create a scale stage from arguments
+ * Map<String, Object> args = Map.of("factor", 2.0);
+ * PipelineStage scaleStage = PipelineStageFactory.createWithArgs("scale", args);
+ * }</pre>
+ *
+ * <h2>Registration:</h2>
+ * <p>New stage types can be registered by adding entries to the {@code STAGE_ARGS_CREATORS} map
+ * in the static initializer block. Each entry maps a stage name to a factory function
+ * that creates the appropriate stage instance.</p>
+ *
+ */
+public class PipelineStageFactory {
+
+    /**
+     * Private constructor to prevent instantiation of utility class.
+     */
+    private PipelineStageFactory() {
+        // Utility class
+    }
+
+    private static final Map<String, Function<Map<String, Object>, PipelineStage>> STAGE_ARGS_CREATORS = new HashMap<>();
+    private static final Map<String, Function<StreamInput, PipelineStage>> STAGE_READERS = new HashMap<>();
+
+    static {
+        // Auto-register all annotated stage classes
+        // TODO: Replace manual registration with automatic classpath scanning to discover
+        // all classes annotated with @PipelineStageAnnotation
+        autoRegisterStages();
+    }
+
+    /**
+     * Automatically discover and register all classes annotated with @PipelineStageAnnotation.
+     */
+    private static void autoRegisterStages() {
+        try {
+            // For now, manually register known stages. In a full implementation,
+            // this would use classpath scanning to find all annotated classes.
+            registerStage(ScaleStage.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to auto-register pipeline stages", e);
+        }
+    }
+
+    /**
+     * Register a stage class that has the @PipelineStageAnnotation.
+     */
+    private static void registerStage(Class<? extends PipelineStage> stageClass) {
+        PipelineStageAnnotation annotation = stageClass.getAnnotation(PipelineStageAnnotation.class);
+        if (annotation == null) {
+            throw new IllegalArgumentException("Stage class " + stageClass.getName() + " must be annotated with @PipelineStageAnnotation");
+        }
+
+        String stageName = annotation.name();
+
+        try {
+            // Register fromArgs method (required)
+            Method fromArgsMethod = stageClass.getMethod("fromArgs", Map.class);
+            STAGE_ARGS_CREATORS.put(stageName, args -> {
+                try {
+                    return (PipelineStage) fromArgsMethod.invoke(null, args);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to create stage from args: " + args, e);
+                }
+            });
+
+            // Register readFrom method (required)
+            Method readFromMethod = stageClass.getMethod("readFrom", StreamInput.class);
+            STAGE_READERS.put(stageName, in -> {
+                try {
+                    return (PipelineStage) readFromMethod.invoke(null, in);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to read stage from stream", e);
+                }
+            });
+
+        } catch (NoSuchMethodException e) {
+            throw new IllegalArgumentException(
+                "Stage class " + stageClass.getName() + " must have static fromArgs(Map<String, Object>) and readFrom(StreamInput) methods",
+                e
+            );
+        }
+    }
+
+    /**
+     * Create a PipelineStage or BinaryPipelineStage from arguments map.
+     *
+     * @param stageType The type of stage to create
+     * @param args Map of argument names to values
+     * @return A new stage instance (PipelineStage or BinaryPipelineStage)
+     * @throws IllegalArgumentException if the stage type is unknown or arguments are invalid
+     */
+    public static PipelineStage createWithArgs(String stageType, Map<String, Object> args) {
+        if (stageType == null || stageType.trim().isEmpty()) {
+            throw new IllegalArgumentException("Stage type cannot be null or empty");
+        }
+
+        Function<Map<String, Object>, PipelineStage> creator = STAGE_ARGS_CREATORS.get(stageType);
+        if (creator == null) {
+            throw new IllegalArgumentException("Unknown stage type: " + stageType);
+        }
+
+        try {
+            return creator.apply(args);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to create stage of type '" + stageType + "' from args: " + args, e);
+        }
+    }
+
+    /**
+     * Check if a stage type is supported by the factory.
+     *
+     * @param stageType The stage type to check
+     * @return true if the stage type is supported, false otherwise
+     */
+    public static boolean isStageTypeSupported(String stageType) {
+        return STAGE_ARGS_CREATORS.containsKey(stageType);
+    }
+
+    /**
+     * Get all supported stage types.
+     *
+     * @return Set of supported stage type identifiers
+     */
+    public static java.util.Set<String> getSupportedStageTypes() {
+        return new HashSet<>(STAGE_ARGS_CREATORS.keySet());
+    }
+
+    /**
+     * Create a stage instance from the input stream for deserialization.
+     *
+     * @param in the input stream
+     * @return a new stage instance
+     * @throws IOException if an I/O error occurs
+     */
+    public static PipelineStage readFrom(StreamInput in) throws IOException {
+        String stageName = in.readString();
+        return readFrom(in, stageName);
+    }
+
+    /**
+     * Create a stage instance from the input stream for deserialization for the given stage name.
+     *
+     * @param in the input stream
+     * @param stageName the stage name
+     * @return a new stage instance
+     * @throws IOException if an I/O error occurs
+     */
+    public static PipelineStage readFrom(StreamInput in, String stageName) throws IOException {
+        Function<StreamInput, PipelineStage> reader = STAGE_READERS.get(stageName);
+        if (reader == null) {
+            throw new IllegalArgumentException("Unknown stage name: " + stageName);
+        }
+
+        try {
+            return reader.apply(in);
+        } catch (Exception e) {
+            if (e.getCause() instanceof IOException) {
+                throw (IOException) e.getCause();
+            }
+            throw new IOException("Failed to read stage '" + stageName + "' from stream", e);
+        }
+    }
+}

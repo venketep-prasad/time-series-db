@@ -9,6 +9,8 @@ package org.opensearch.tsdb.core.model;
 
 import org.opensearch.test.OpenSearchTestCase;
 
+import java.util.Map;
+
 public class ByteLabelsTests extends OpenSearchTestCase {
 
     public void testBasicFunctionality() {
@@ -46,7 +48,7 @@ public class ByteLabelsTests extends OpenSearchTestCase {
         assertEquals("", empty.get("anything"));
         assertFalse(empty.has("anything"));
 
-        ByteLabels emptyFromMap = ByteLabels.fromMap(java.util.Map.of());
+        ByteLabels emptyFromMap = ByteLabels.fromMap(Map.of());
         assertTrue(emptyFromMap.isEmpty());
         assertEquals(empty, emptyFromMap);
     }
@@ -80,7 +82,7 @@ public class ByteLabelsTests extends OpenSearchTestCase {
         assertTrue(labels.has(longKey));
 
         // Verify it works with fromMap too
-        ByteLabels labels2 = ByteLabels.fromMap(java.util.Map.of(longKey, longValue, "short", "val"));
+        ByteLabels labels2 = ByteLabels.fromMap(Map.of(longKey, longValue, "short", "val"));
         assertEquals(labels, labels2);
     }
 
