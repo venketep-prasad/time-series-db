@@ -9,6 +9,8 @@ package org.opensearch.tsdb.lang.m3.m3ql.parser.nodes;
 
 import org.opensearch.tsdb.lang.m3.m3ql.parser.M3ASTVisitor;
 
+import java.util.Locale;
+
 /**
  * Catch all for all M3 functions: fetch, using, summarize, moving, etc. This node indicates the
  * beginning of a function definition, and only stores the name of the function.
@@ -46,7 +48,7 @@ public class FunctionNode extends M3ASTNode {
     @Override
     public String getExplainName() {
         if (functionName != null) {
-            return "FUNCTION(%s)".formatted(functionName);
+            return String.format(Locale.ROOT, "FUNCTION(%s)", functionName);
         }
         return "FUNCTION";
     }

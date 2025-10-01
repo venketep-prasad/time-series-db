@@ -9,6 +9,8 @@ package org.opensearch.tsdb.lang.m3.m3ql.parser.nodes;
 
 import org.opensearch.tsdb.lang.m3.m3ql.parser.M3ASTVisitor;
 
+import java.util.Locale;
+
 /**
  * Tags occur in fetch expressions, for example fetch dc:{dca*,phx*} name:queries will have two tag specifier nodes, one for "dc" and one for "name".
  */
@@ -61,6 +63,6 @@ public class TagKeyNode extends M3ASTNode {
 
     @Override
     public String getExplainName() {
-        return "TAG_KEY(%s)".formatted(keyName);
+        return String.format(Locale.ROOT, "TAG_KEY(%s)", keyName);
     }
 }

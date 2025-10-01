@@ -23,6 +23,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.TermVectors;
 import org.apache.lucene.index.Terms;
+import org.apache.lucene.search.AcceptDocs;
 import org.apache.lucene.search.KnnCollector;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -154,13 +155,13 @@ public class ClosedChunkIndexLeafReader extends MetricsLeafReader {
     }
 
     @Override
-    public void searchNearestVectors(String s, float[] floats, KnnCollector knnCollector, Bits bits) throws IOException {
-        inner.searchNearestVectors(s, floats, knnCollector, bits);
+    public void searchNearestVectors(String s, float[] floats, KnnCollector knnCollector, AcceptDocs acceptDocs) throws IOException {
+        inner.searchNearestVectors(s, floats, knnCollector, acceptDocs);
     }
 
     @Override
-    public void searchNearestVectors(String s, byte[] bytes, KnnCollector knnCollector, Bits bits) throws IOException {
-        inner.searchNearestVectors(s, bytes, knnCollector, bits);
+    public void searchNearestVectors(String s, byte[] bytes, KnnCollector knnCollector, AcceptDocs acceptDocs) throws IOException {
+        inner.searchNearestVectors(s, bytes, knnCollector, acceptDocs);
     }
 
     @Override

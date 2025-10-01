@@ -9,6 +9,8 @@ package org.opensearch.tsdb.lang.m3.m3ql.parser.nodes;
 
 import org.opensearch.tsdb.lang.m3.m3ql.parser.M3ASTVisitor;
 
+import java.util.Locale;
+
 /**
  * Macros allow repeating a pipeline definition, as in: A = (fetch ...); B = (A | timeshift 1d); A | asPercent (B)
  * <p>
@@ -60,6 +62,6 @@ public class MacroNode extends M3ASTNode {
 
     @Override
     public String getExplainName() {
-        return "MACRO(macro=%s)".formatted(macroName);
+        return String.format(Locale.ROOT, "MACRO(macro=%s)", macroName);
     }
 }

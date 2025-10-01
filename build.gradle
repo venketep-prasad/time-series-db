@@ -9,7 +9,7 @@ import org.opensearch.gradle.test.RestIntegTestTask
 
 buildscript {
     ext {
-        opensearch_version = System.getProperty("opensearch.version", "3.2.0-SNAPSHOT")
+        opensearch_version = System.getProperty("opensearch.version", "3.3.0-SNAPSHOT")
         version_qualifier = System.getProperty("build.version_qualifier", "")
         buildVersionQualifier = System.getProperty("build.version_qualifier", "")
         isSnapshot = "true" == System.getProperty("build.snapshot", "true")
@@ -206,6 +206,7 @@ configurations {
 
 dependencies {
     javacc 'net.java.dev.javacc:javacc:7.0.12'
+    implementation "${opensearch_group}.plugin:store-subdirectory:${opensearch_version}"
 }
 
 String javaccGrammarPath = 'src/main/java/org/opensearch/tsdb/lang/m3/m3ql/parser'

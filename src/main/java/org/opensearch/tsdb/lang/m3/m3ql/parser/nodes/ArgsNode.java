@@ -11,6 +11,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.parser.M3ASTVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Represents a list of arguments, such as in:
@@ -43,7 +44,7 @@ public class ArgsNode extends M3ASTNode {
 
     @Override
     public String getExplainName() {
-        return "ARGS(%s)".formatted(args);
+        return String.format(Locale.ROOT, "ARGS(%s)", args);
     }
 
     /**
