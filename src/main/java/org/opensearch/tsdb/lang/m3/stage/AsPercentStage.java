@@ -133,4 +133,32 @@ public class AsPercentStage extends AbstractBinaryProjectionStage {
         List<String> labelTag = (List<String>) args.get(LABELS_PARAM_KEY);
         return new AsPercentStage(rightOpReference, labelTag);
     }
+
+    @Override
+    public int hashCode() {
+        int result = super.hashCode();
+        result = 31 * result + (rightOperandReferenceName != null ? rightOperandReferenceName.hashCode() : 0);
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        if (!super.equals(obj)) {
+            return false;
+        }
+        AsPercentStage that = (AsPercentStage) obj;
+        if (rightOperandReferenceName == null && that.rightOperandReferenceName == null) {
+            return true;
+        }
+        if (rightOperandReferenceName == null || that.rightOperandReferenceName == null) {
+            return false;
+        }
+        return rightOperandReferenceName.equals(that.rightOperandReferenceName);
+    }
 }

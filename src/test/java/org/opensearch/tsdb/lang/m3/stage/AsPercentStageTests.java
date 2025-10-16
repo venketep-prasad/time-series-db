@@ -10,9 +10,10 @@ package org.opensearch.tsdb.lang.m3.stage;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
@@ -25,7 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AsPercentStageTests extends OpenSearchTestCase {
+public class AsPercentStageTests extends AbstractWireSerializingTestCase<AsPercentStage> {
 
     public void testSingleRightSeries() {
         AsPercentStage stage = new AsPercentStage("right_series");
@@ -354,5 +355,50 @@ public class AsPercentStageTests extends OpenSearchTestCase {
             stageWithLabels.toXContent(builder, ToXContent.EMPTY_PARAMS);
             builder.endObject();
         }
+    }
+
+    /**
+     * Test equals method for AsPercentStage.
+     */
+    public void testEquals() {
+        AsPercentStage stage1 = new AsPercentStage("test_ref");
+        AsPercentStage stage2 = new AsPercentStage("test_ref");
+
+        assertEquals("Equal AsPercentStages should be equal", stage1, stage2);
+
+        AsPercentStage stageDiffRef = new AsPercentStage("different_ref");
+        assertNotEquals("Different reference names should not be equal", stage1, stageDiffRef);
+
+        AsPercentStage stageNull1 = new AsPercentStage(null);
+        AsPercentStage stageNull2 = new AsPercentStage(null);
+        assertEquals("Null reference names should be equal", stageNull1, stageNull2);
+
+        assertNotEquals("Null vs non-null reference names should not be equal", stage1, stageNull1);
+        assertNotEquals("Non-null vs null reference names should not be equal", stageNull1, stage1);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+
+        List<String> labelKeys = Arrays.asList("service", "region");
+        AsPercentStage stageWithLabels1 = new AsPercentStage("ref", labelKeys);
+        AsPercentStage stageWithLabels2 = new AsPercentStage("ref", labelKeys);
+        assertEquals("Stages with same reference and label keys should be equal", stageWithLabels1, stageWithLabels2);
+
+        List<String> differentLabelKeys = Arrays.asList("service", "zone");
+        AsPercentStage stageWithDiffLabels = new AsPercentStage("ref", differentLabelKeys);
+        assertNotEquals("Stages with different label keys should not be equal", stageWithLabels1, stageWithDiffLabels);
+    }
+
+    @Override
+    protected Writeable.Reader<AsPercentStage> instanceReader() {
+        return AsPercentStage::readFrom;
+    }
+
+    @Override
+    protected AsPercentStage createTestInstance() {
+        return new AsPercentStage(randomAlphaOfLengthBetween(3, 10), randomBoolean() ? null : Arrays.asList("service", "region"));
     }
 }

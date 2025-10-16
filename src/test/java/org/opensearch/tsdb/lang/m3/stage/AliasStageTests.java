@@ -9,7 +9,8 @@ package org.opensearch.tsdb.lang.m3.stage;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.core.common.io.stream.Writeable;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
@@ -24,7 +25,7 @@ import java.util.Map;
 /**
  * Tests for AliasStage functionality.
  */
-public class AliasStageTests extends OpenSearchTestCase {
+public class AliasStageTests extends AbstractWireSerializingTestCase<AliasStage> {
 
     /**
      * Test AliasStage with simple string constant.
@@ -348,4 +349,39 @@ public class AliasStageTests extends OpenSearchTestCase {
         }
     }
 
+    /**
+     * Test equals method for AliasStage.
+     */
+    public void testEquals() {
+        AliasStage stage1 = new AliasStage("test_pattern");
+        AliasStage stage2 = new AliasStage("test_pattern");
+
+        assertEquals("Equal AliasStages should be equal", stage1, stage2);
+
+        AliasStage stageDifferent = new AliasStage("different_pattern");
+        assertNotEquals("Different alias patterns should not be equal", stage1, stageDifferent);
+
+        AliasStage stageNull1 = new AliasStage(null);
+        AliasStage stageNull2 = new AliasStage(null);
+        assertEquals("Null alias patterns should be equal", stageNull1, stageNull2);
+
+        assertNotEquals("Null vs non-null alias patterns should not be equal", stage1, stageNull1);
+        assertNotEquals("Non-null vs null alias patterns should not be equal", stageNull1, stage1);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+    }
+
+    @Override
+    protected Writeable.Reader<AliasStage> instanceReader() {
+        return AliasStage::readFrom;
+    }
+
+    @Override
+    protected AliasStage createTestInstance() {
+        return new AliasStage(randomAlphaOfLengthBetween(0, 20));
+    }
 }

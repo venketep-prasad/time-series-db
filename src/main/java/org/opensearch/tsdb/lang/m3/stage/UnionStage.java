@@ -120,4 +120,27 @@ public class UnionStage implements BinaryPipelineStage {
         String rightOpReference = (String) args.get(RIGHT_OP_REFERENCE_PARAM_KEY);
         return new UnionStage(rightOpReference);
     }
+
+    @Override
+    public int hashCode() {
+        return rightOperandReferenceName != null ? rightOperandReferenceName.hashCode() : 0;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        UnionStage that = (UnionStage) obj;
+        if (rightOperandReferenceName == null && that.rightOperandReferenceName == null) {
+            return true;
+        }
+        if (rightOperandReferenceName == null || that.rightOperandReferenceName == null) {
+            return false;
+        }
+        return rightOperandReferenceName.equals(that.rightOperandReferenceName);
+    }
 }

@@ -133,4 +133,27 @@ public class AliasStage implements UnaryPipelineStage {
 
         return sb.toString();
     }
+
+    @Override
+    public int hashCode() {
+        return aliasPattern != null ? aliasPattern.hashCode() : 0;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        AliasStage that = (AliasStage) obj;
+        if (aliasPattern == null && that.aliasPattern == null) {
+            return true;
+        }
+        if (aliasPattern == null || that.aliasPattern == null) {
+            return false;
+        }
+        return aliasPattern.equals(that.aliasPattern);
+    }
 }

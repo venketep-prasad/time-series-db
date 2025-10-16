@@ -10,9 +10,10 @@ package org.opensearch.tsdb.lang.m3.stage;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
@@ -24,7 +25,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-public class UnionStageTests extends OpenSearchTestCase {
+public class UnionStageTests extends AbstractWireSerializingTestCase<UnionStage> {
 
     public void testUnion() {
         UnionStage stage = new UnionStage("right_series");
@@ -81,21 +82,7 @@ public class UnionStageTests extends OpenSearchTestCase {
         assertEquals("test_reference", stage.getRightOpReferenceName());
     }
 
-    public void testSerialization() throws IOException {
-        UnionStage stage = new UnionStage("test_reference");
-
-        try (BytesStreamOutput out = new BytesStreamOutput()) {
-            stage.writeTo(out);
-            try (StreamInput in = out.bytes().streamInput()) {
-                UnionStage readStage = UnionStage.readFrom(in);
-                assertEquals("test_reference", readStage.getRightOpReferenceName());
-                assertEquals("union", readStage.getName());
-            }
-        }
-    }
-
     public void testToXContent() throws IOException {
-        // Test toXContent
         UnionStage stage = new UnionStage("test_reference");
         try (XContentBuilder builder = XContentFactory.jsonBuilder()) {
             builder.startObject();
@@ -118,5 +105,41 @@ public class UnionStageTests extends OpenSearchTestCase {
                 assertEquals("union", readStage.getName());
             }
         }
+    }
+
+    /**
+     * Test equals method for UnionStage.
+     */
+    public void testEquals() {
+        UnionStage stage1 = new UnionStage("test_ref");
+        UnionStage stage2 = new UnionStage("test_ref");
+
+        assertEquals("Equal UnionStages should be equal", stage1, stage2);
+
+        UnionStage stageDiffRef = new UnionStage("different_ref");
+        assertNotEquals("Different reference names should not be equal", stage1, stageDiffRef);
+
+        UnionStage stageNull1 = new UnionStage(null);
+        UnionStage stageNull2 = new UnionStage(null);
+        assertEquals("Null reference names should be equal", stageNull1, stageNull2);
+
+        assertNotEquals("Null vs non-null reference names should not be equal", stage1, stageNull1);
+        assertNotEquals("Non-null vs null reference names should not be equal", stageNull1, stage1);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+    }
+
+    @Override
+    protected Writeable.Reader<UnionStage> instanceReader() {
+        return UnionStage::readFrom;
+    }
+
+    @Override
+    protected UnionStage createTestInstance() {
+        return new UnionStage(randomAlphaOfLengthBetween(5, 20));
     }
 }

@@ -194,4 +194,21 @@ public class TimeshiftStage extends AbstractMapperStage {
 
         return new TimeshiftStage(shiftMillis);
     }
+
+    @Override
+    public int hashCode() {
+        return Long.hashCode(shiftMillis);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        TimeshiftStage that = (TimeshiftStage) obj;
+        return shiftMillis == that.shiftMillis;
+    }
 }

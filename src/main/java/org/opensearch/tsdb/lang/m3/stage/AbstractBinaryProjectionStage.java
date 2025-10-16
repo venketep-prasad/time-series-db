@@ -242,4 +242,30 @@ public abstract class AbstractBinaryProjectionStage implements BinaryPipelineSta
      * @return The result sample
      */
     protected abstract Sample processSamples(Sample leftSample, Sample rightSample);
+
+    @Override
+    public int hashCode() {
+        List<String> labelKeys = getLabelKeys();
+        return labelKeys != null ? labelKeys.hashCode() : 0;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        AbstractBinaryProjectionStage that = (AbstractBinaryProjectionStage) obj;
+        List<String> labelKeys = getLabelKeys();
+        List<String> thatLabelKeys = that.getLabelKeys();
+        if (labelKeys == null && thatLabelKeys == null) {
+            return true;
+        }
+        if (labelKeys == null || thatLabelKeys == null) {
+            return false;
+        }
+        return labelKeys.equals(thatLabelKeys);
+    }
 }

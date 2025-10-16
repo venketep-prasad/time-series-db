@@ -9,7 +9,8 @@ package org.opensearch.tsdb.lang.m3.stage;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.core.common.io.stream.Writeable;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -30,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class ScaleStageTests extends OpenSearchTestCase {
+public class ScaleStageTests extends AbstractWireSerializingTestCase<ScaleStage> {
 
     public void testConstructor() {
         // Arrange
@@ -701,4 +702,40 @@ public class ScaleStageTests extends OpenSearchTestCase {
         assertNotNull("Should work as UnaryPipelineStage", unaryStage);
     }
 
+    /**
+     * Test equals method for ScaleStage.
+     */
+    public void testEquals() {
+        ScaleStage stage1 = new ScaleStage(2.5);
+        ScaleStage stage2 = new ScaleStage(2.5);
+
+        assertEquals("Equal ScaleStages should be equal", stage1, stage2);
+
+        ScaleStage stageDifferent = new ScaleStage(3.0);
+        assertNotEquals("Different factors should not be equal", stage1, stageDifferent);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+
+        ScaleStage stageZero1 = new ScaleStage(0.0);
+        ScaleStage stageZero2 = new ScaleStage(0.0);
+        assertEquals("Zero factors should be equal", stageZero1, stageZero2);
+
+        ScaleStage stageNegative1 = new ScaleStage(-1.5);
+        ScaleStage stageNegative2 = new ScaleStage(-1.5);
+        assertEquals("Negative factors should be equal", stageNegative1, stageNegative2);
+    }
+
+    @Override
+    protected Writeable.Reader<ScaleStage> instanceReader() {
+        return ScaleStage::readFrom;
+    }
+
+    @Override
+    protected ScaleStage createTestInstance() {
+        return new ScaleStage(randomDoubleBetween(-1000.0, 1000.0, true));
+    }
 }

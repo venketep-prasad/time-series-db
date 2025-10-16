@@ -273,4 +273,23 @@ public class ValueFilterStage implements UnaryPipelineStage {
     public boolean supportConcurrentSegmentSearch() {
         return true;
     }
+
+    @Override
+    public int hashCode() {
+        int result = operator.hashCode();
+        result = 31 * result + Double.hashCode(targetValue);
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        ValueFilterStage that = (ValueFilterStage) obj;
+        return operator == that.operator && Double.compare(that.targetValue, targetValue) == 0;
+    }
 }

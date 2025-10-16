@@ -10,9 +10,10 @@ package org.opensearch.tsdb.lang.m3.stage;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -26,7 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class SortStageTests extends OpenSearchTestCase {
+public class SortStageTests extends AbstractWireSerializingTestCase<SortStage> {
 
     // ========== Constructor Tests ==========
 
@@ -495,4 +496,47 @@ public class SortStageTests extends OpenSearchTestCase {
         return sum;
     }
 
+    /**
+     * Test equals method for SortStage.
+     */
+    public void testEquals() {
+        SortStage stage1 = new SortStage(SortStage.SortBy.AVG, SortStage.SortOrder.DESC);
+        SortStage stage2 = new SortStage(SortStage.SortBy.AVG, SortStage.SortOrder.DESC);
+
+        assertEquals("Equal SortStages should be equal", stage1, stage2);
+
+        SortStage stageDiffSortBy = new SortStage(SortStage.SortBy.MAX, SortStage.SortOrder.DESC);
+        assertNotEquals("Different sortBy should not be equal", stage1, stageDiffSortBy);
+
+        SortStage stageDiffSortOrder = new SortStage(SortStage.SortBy.AVG, SortStage.SortOrder.ASC);
+        assertNotEquals("Different sortOrder should not be equal", stage1, stageDiffSortOrder);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+
+        for (SortStage.SortBy sortBy : SortStage.SortBy.values()) {
+            for (SortStage.SortOrder sortOrder : SortStage.SortOrder.values()) {
+                SortStage stage3 = new SortStage(sortBy, sortOrder);
+                SortStage stage4 = new SortStage(sortBy, sortOrder);
+                assertEquals("Stages with same sortBy " + sortBy + " and sortOrder " + sortOrder + " should be equal", stage3, stage4);
+            }
+        }
+
+        SortStage stageDefault1 = new SortStage(SortStage.SortBy.SUM);
+        SortStage stageDefault2 = new SortStage(SortStage.SortBy.SUM);
+        assertEquals("Stages with default sort order should be equal", stageDefault1, stageDefault2);
+    }
+
+    @Override
+    protected Writeable.Reader<SortStage> instanceReader() {
+        return SortStage::readFrom;
+    }
+
+    @Override
+    protected SortStage createTestInstance() {
+        return new SortStage(randomFrom(SortStage.SortBy.values()), randomFrom(SortStage.SortOrder.values()));
+    }
 }

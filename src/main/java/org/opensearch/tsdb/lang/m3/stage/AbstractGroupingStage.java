@@ -436,4 +436,21 @@ public abstract class AbstractGroupingStage implements UnaryPipelineStage {
     public List<String> getGroupByLabels() {
         return groupByLabels;
     }
+
+    @Override
+    public int hashCode() {
+        return groupByLabels.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        AbstractGroupingStage that = (AbstractGroupingStage) obj;
+        return groupByLabels.equals(that.groupByLabels);
+    }
 }

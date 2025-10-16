@@ -10,9 +10,10 @@ package org.opensearch.tsdb.lang.m3.stage;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -26,7 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ValueFilterStageTests extends OpenSearchTestCase {
+public class ValueFilterStageTests extends AbstractWireSerializingTestCase<ValueFilterStage> {
 
     // ========== Constructor Tests ==========
 
@@ -206,7 +207,6 @@ public class ValueFilterStageTests extends OpenSearchTestCase {
     }
 
     public void testOperatorFromStringCaseSensitive() {
-        // Test that uppercase operators are not accepted
         IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> ValueFilterStage.Operator.fromString("EQ"));
         assertEquals("Unknown operator: EQ. Supported: eq/==, ne/!=, ge/>=, gt/>, le/<=, lt/<", exception.getMessage());
 
@@ -240,7 +240,6 @@ public class ValueFilterStageTests extends OpenSearchTestCase {
     }
 
     public void testToXContent() throws IOException {
-        // Test XContent serialization
         ValueFilterStage stage = new ValueFilterStage(ValueFilterStage.Operator.GE, 10.5);
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
@@ -369,5 +368,43 @@ public class ValueFilterStageTests extends OpenSearchTestCase {
         }
         Labels labels = ByteLabels.fromMap(Map.of("label", "test"));
         return new TimeSeries(samples, labels, 1000L, 1000L + (values.size() - 1) * 1000L, 1000L, "test");
+    }
+
+    /**
+     * Test equals method for ValueFilterStage.
+     */
+    public void testEquals() {
+        ValueFilterStage stage1 = new ValueFilterStage(ValueFilterStage.Operator.GT, 10.5);
+        ValueFilterStage stage2 = new ValueFilterStage(ValueFilterStage.Operator.GT, 10.5);
+
+        assertEquals("Equal ValueFilterStages should be equal", stage1, stage2);
+
+        ValueFilterStage stageDiffOp = new ValueFilterStage(ValueFilterStage.Operator.LT, 10.5);
+        assertNotEquals("Different operators should not be equal", stage1, stageDiffOp);
+
+        ValueFilterStage stageDiffValue = new ValueFilterStage(ValueFilterStage.Operator.GT, 15.0);
+        assertNotEquals("Different target values should not be equal", stage1, stageDiffValue);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+
+        for (ValueFilterStage.Operator op : ValueFilterStage.Operator.values()) {
+            ValueFilterStage stage3 = new ValueFilterStage(op, 5.0);
+            ValueFilterStage stage4 = new ValueFilterStage(op, 5.0);
+            assertEquals("Stages with same operator " + op + " should be equal", stage3, stage4);
+        }
+    }
+
+    @Override
+    protected Writeable.Reader<ValueFilterStage> instanceReader() {
+        return ValueFilterStage::readFrom;
+    }
+
+    @Override
+    protected ValueFilterStage createTestInstance() {
+        return new ValueFilterStage(randomFrom(ValueFilterStage.Operator.values()), randomDoubleBetween(-1000.0, 1000.0, true));
     }
 }

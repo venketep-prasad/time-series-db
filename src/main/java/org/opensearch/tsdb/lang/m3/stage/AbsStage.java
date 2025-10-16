@@ -17,7 +17,6 @@ import org.opensearch.tsdb.query.stage.PipelineStageAnnotation;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Pipeline stage that computes the absolute value of time series values.
@@ -114,21 +113,5 @@ public class AbsStage extends AbstractMapperStage {
             throw new IllegalArgumentException("Args cannot be null");
         }
         return new AbsStage();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null || getClass() != obj.getClass()) {
-            return false;
-        }
-        return true; // All AbsStage instances are equal since they have no parameters
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(NAME);
     }
 }

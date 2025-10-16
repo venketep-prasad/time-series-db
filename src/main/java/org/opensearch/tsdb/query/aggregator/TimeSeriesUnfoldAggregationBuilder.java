@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Aggregation builder for time series unfold pipeline aggregations.
@@ -100,7 +101,7 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
         this.step = in.readLong();
 
         int stageCount = in.readInt();
-        this.stages = new ArrayList<>(stageCount);
+        this.stages = stageCount == 0 ? null : new ArrayList<>(stageCount);
         for (int i = 0; i < stageCount; i++) {
             this.stages.add((UnaryPipelineStage) PipelineStageFactory.readFrom(in));
         }
@@ -145,6 +146,7 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
 
     @Override
     protected XContentBuilder internalXContent(XContentBuilder builder, Params params) throws IOException {
+        builder.startObject();
         builder.field("min_timestamp", minTimestamp);
         builder.field("max_timestamp", maxTimestamp);
         builder.field("step", step);
@@ -158,6 +160,7 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
             }
             builder.endArray();
         }
+        builder.endObject();
         return builder;
     }
 
@@ -173,7 +176,7 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
         Long minTimestamp = null;
         Long maxTimestamp = null;
         Long step = null;
-        List<UnaryPipelineStage> stages = new ArrayList<>();
+        List<UnaryPipelineStage> stages = null;
 
         XContentParser.Token token;
         String currentFieldName = null;
@@ -231,6 +234,9 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
                         if (stageType != null) {
                             PipelineStage stage = PipelineStageFactory.createWithArgs(stageType, stageArgs);
                             if (stage instanceof UnaryPipelineStage) {
+                                if (stages == null) {
+                                    stages = new ArrayList<>();
+                                }
                                 stages.add((UnaryPipelineStage) stage);
                             } else {
                                 throw new IllegalArgumentException("Stage type '" + stageType + "' is not a UnaryPipelineStage");
@@ -286,6 +292,45 @@ public class TimeSeriesUnfoldAggregationBuilder extends AbstractAggregationBuild
     @Override
     public String getType() {
         return NAME;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        if (!super.equals(obj)) {
+            return false;
+        }
+
+        TimeSeriesUnfoldAggregationBuilder that = (TimeSeriesUnfoldAggregationBuilder) obj;
+        if (minTimestamp != that.minTimestamp) {
+            return false;
+        }
+        if (maxTimestamp != that.maxTimestamp) {
+            return false;
+        }
+        if (step != that.step) {
+            return false;
+        }
+        return Objects.equals(stages, that.stages);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = super.hashCode();
+        if (stages != null) {
+            for (PipelineStage stage : stages) {
+                result = 31 * result + stage.hashCode();
+            }
+        }
+        result = 31 * result + Long.hashCode(minTimestamp);
+        result = 31 * result + Long.hashCode(maxTimestamp);
+        result = 31 * result + Long.hashCode(step);
+        return result;
     }
 
     /**

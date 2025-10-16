@@ -9,14 +9,23 @@ package org.opensearch.tsdb.query.aggregator;
 
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.common.xcontent.json.JsonXContent;
+import org.opensearch.core.ParseField;
+import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.query.QueryShardContext;
 import org.opensearch.search.aggregations.AggregationBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
 import org.opensearch.search.aggregations.AggregatorFactory;
+import org.opensearch.search.aggregations.BaseAggregationBuilder;
+import org.opensearch.search.aggregations.BaseAggregationTestCase;
 import org.opensearch.search.aggregations.support.ValuesSourceRegistry;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.tsdb.lang.m3.stage.AbsStage;
+import org.opensearch.tsdb.lang.m3.stage.AliasStage;
+import org.opensearch.tsdb.lang.m3.stage.AvgStage;
+import org.opensearch.tsdb.lang.m3.stage.PerSecondStage;
+import org.opensearch.tsdb.lang.m3.stage.RoundStage;
 import org.opensearch.tsdb.lang.m3.stage.ScaleStage;
 import org.opensearch.tsdb.lang.m3.stage.SumStage;
 import org.opensearch.tsdb.query.stage.UnaryPipelineStage;
@@ -25,13 +34,66 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for TimeSeriesUnfoldAggregationBuilder.
  */
-public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase {
+public class TimeSeriesUnfoldAggregationBuilderTests extends BaseAggregationTestCase<TimeSeriesUnfoldAggregationBuilder> {
+
+    @Override
+    protected TimeSeriesUnfoldAggregationBuilder createTestAggregatorBuilder() {
+        // TODO: improve generation of a random collection of stages
+        List<UnaryPipelineStage> candidateStages = List.of(
+            new AbsStage(),
+            new AliasStage("alias"),
+            new AvgStage(),
+            new PerSecondStage(),
+            new RoundStage(1),
+            new ScaleStage(2.5),
+            new SumStage("service")
+        );
+        List<UnaryPipelineStage> stages = candidateStages.stream().filter(s -> randomBoolean()).collect(Collectors.toList());
+
+        if (randomInt(5) % 5 == 0) {
+            stages = null; // sometimes test null stages
+        }
+
+        String name = randomAlphaOfLengthBetween(3, 20);
+        long minTimestamp = randomLongBetween(0, 5000L);
+        long maxTimestamp = randomLongBetween(minTimestamp, minTimestamp + 5000L);
+        long step = randomLongBetween(1L, 100L) * 10;
+
+        return new TimeSeriesUnfoldAggregationBuilder(name, stages, minTimestamp, maxTimestamp, step);
+    }
+
+    @Override
+    protected NamedXContentRegistry xContentRegistry() {
+        return new NamedXContentRegistry(
+            List.of(
+                new NamedXContentRegistry.Entry(
+                    BaseAggregationBuilder.class,
+                    new ParseField(TimeSeriesUnfoldAggregationBuilder.NAME),
+                    (p, n) -> TimeSeriesUnfoldAggregationBuilder.parse((String) n, p)
+                )
+            )
+        );
+    }
+
+    @Override
+    protected NamedWriteableRegistry namedWriteableRegistry() {
+        return new NamedWriteableRegistry(
+            List.of(
+                new NamedWriteableRegistry.Entry(
+                    AggregationBuilder.class,
+                    TimeSeriesUnfoldAggregationBuilder.NAME,
+                    TimeSeriesUnfoldAggregationBuilder::new
+                )
+            )
+        );
+    }
 
     public void testConstructorBasic() {
         // Arrange
@@ -109,8 +171,6 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
         assertEquals(original.getStages(), typedCopy.getStages());
     }
 
-    // ========== Additional Enhanced Tests ==========
-
     /**
      * Test XContent generation with stages.
      */
@@ -121,8 +181,8 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
 
         // Act
         XContentBuilder xContentBuilder = XContentFactory.jsonBuilder();
-        xContentBuilder.startObject();
-        builder.internalXContent(xContentBuilder, null);
+        xContentBuilder.startObject(); // Simulate outer object e.g. in {@link AggregatorFactories#toXContent}
+        builder.toXContent(xContentBuilder, null); // Ensure no exceptions
         xContentBuilder.endObject();
 
         // Assert
@@ -146,8 +206,8 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
 
         // Act
         XContentBuilder xContentBuilder = XContentFactory.jsonBuilder();
-        xContentBuilder.startObject();
-        builder.internalXContent(xContentBuilder, null);
+        xContentBuilder.startObject(); // Simulate outer object e.g. in {@link AggregatorFactories#toXContent}
+        builder.toXContent(xContentBuilder, null); // Ensure no exceptions
         xContentBuilder.endObject();
 
         // Assert
@@ -184,7 +244,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
     /**
      * Test registerAggregators method with mock builder.
      */
-    public void testRegisterAggregatorsWithMock() throws Exception {
+    public void testRegisterAggregatorsWithMock() {
         // Arrange
         ValuesSourceRegistry.Builder mockBuilder = mock(ValuesSourceRegistry.Builder.class);
 
@@ -195,7 +255,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
     /**
      * Test constructor with extreme timestamp values.
      */
-    public void testExtremeTimestampValues() throws Exception {
+    public void testExtremeTimestampValues() {
         // Arrange & Act
         TimeSeriesUnfoldAggregationBuilder builder = new TimeSeriesUnfoldAggregationBuilder(
             "extreme_values",
@@ -214,7 +274,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
     /**
      * Test with large number of stages.
      */
-    public void testWithManyStages() throws Exception {
+    public void testWithManyStages() {
         // Arrange
         List<UnaryPipelineStage> manyStages = new ArrayList<>();
         for (int i = 0; i < 50; i++) {
@@ -233,7 +293,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
     /**
      * Test copy constructor functionality.
      */
-    public void testCopyConstructor() throws Exception {
+    public void testCopyConstructor() {
         // Arrange
         List<UnaryPipelineStage> stages = List.of(new ScaleStage(2.0));
         TimeSeriesUnfoldAggregationBuilder original = new TimeSeriesUnfoldAggregationBuilder("original", stages, 1000L, 2000L, 100L);
@@ -262,6 +322,40 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
         assertEquals("time_series_unfold", TimeSeriesUnfoldAggregationBuilder.NAME);
     }
 
+    /**
+     * Test equals method for various conditions.
+     */
+    public void testEquals() {
+        List<UnaryPipelineStage> stages = List.of(new ScaleStage(2.0));
+        TimeSeriesUnfoldAggregationBuilder builder1 = new TimeSeriesUnfoldAggregationBuilder("test", stages, 1000L, 2000L, 100L);
+        TimeSeriesUnfoldAggregationBuilder builder2 = new TimeSeriesUnfoldAggregationBuilder("test", stages, 1000L, 2000L, 100L);
+
+        // Test equal objects
+        assertTrue("Equal objects should return true", builder1.equals(builder2));
+
+        // Test different minTimestamp
+        TimeSeriesUnfoldAggregationBuilder builderDiffMin = new TimeSeriesUnfoldAggregationBuilder("test", stages, 999L, 2000L, 100L);
+        assertFalse("Different minTimestamp should return false", builder1.equals(builderDiffMin));
+
+        // Test different maxTimestamp
+        TimeSeriesUnfoldAggregationBuilder builderDiffMax = new TimeSeriesUnfoldAggregationBuilder("test", stages, 1000L, 2001L, 100L);
+        assertFalse("Different maxTimestamp should return false", builder1.equals(builderDiffMax));
+
+        // Test different step
+        TimeSeriesUnfoldAggregationBuilder builderDiffStep = new TimeSeriesUnfoldAggregationBuilder("test", stages, 1000L, 2000L, 200L);
+        assertFalse("Different step should return false", builder1.equals(builderDiffStep));
+
+        // Test super.equals() failure (different name)
+        TimeSeriesUnfoldAggregationBuilder builderDiffName = new TimeSeriesUnfoldAggregationBuilder(
+            "different",
+            stages,
+            1000L,
+            2000L,
+            100L
+        );
+        assertFalse("Different name should return false", builder1.equals(builderDiffName));
+    }
+
     // ========== XContent Parser Tests ==========
 
     /**
@@ -284,7 +378,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
             assertEquals(1000L, result.getMinTimestamp());
             assertEquals(2000L, result.getMaxTimestamp());
             assertEquals(100L, result.getStep());
-            assertTrue("Should have no stages", result.getStages().isEmpty());
+            assertNull("Should have no stages", result.getStages());
         }
     }
 
@@ -402,7 +496,7 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
             assertEquals(1000L, result.getMinTimestamp());
             assertEquals(2000L, result.getMaxTimestamp());
             assertEquals(500L, result.getStep());
-            assertTrue("Should have no stages", result.getStages().isEmpty());
+            assertNull("Should have no stages", result.getStages());
         }
     }
 
@@ -485,32 +579,6 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
     }
 
     /**
-     * Test parsing with empty stages array
-     */
-    public void testParseWithEmptyStages() throws Exception {
-        String json = """
-            {
-              "min_timestamp": 1000,
-              "max_timestamp": 2000,
-              "step": 100,
-              "stages": []
-            }
-            """;
-
-        try (XContentParser parser = createParser(JsonXContent.jsonXContent, json)) {
-            parser.nextToken(); // Move to START_OBJECT
-
-            TimeSeriesUnfoldAggregationBuilder result = TimeSeriesUnfoldAggregationBuilder.parse("empty_stages_agg", parser);
-
-            assertEquals("empty_stages_agg", result.getName());
-            assertEquals(1000L, result.getMinTimestamp());
-            assertEquals(2000L, result.getMaxTimestamp());
-            assertEquals(100L, result.getStep());
-            assertTrue("Stages should be empty", result.getStages().isEmpty());
-        }
-    }
-
-    /**
      * Test error handling for invalid stage type
      */
     public void testParseInvalidStageType() throws Exception {
@@ -584,5 +652,4 @@ public class TimeSeriesUnfoldAggregationBuilderTests extends OpenSearchTestCase 
             assertEquals(0.5, thirdScale.getFactor(), 0.001);
         }
     }
-
 }

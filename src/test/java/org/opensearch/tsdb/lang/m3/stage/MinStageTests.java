@@ -9,8 +9,9 @@ package org.opensearch.tsdb.lang.m3.stage;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.search.aggregations.InternalAggregation;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -24,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class MinStageTests extends OpenSearchTestCase {
+public class MinStageTests extends AbstractWireSerializingTestCase<MinStage> {
 
     private MinStage minStage;
     private MinStage minStageWithLabels;
@@ -475,4 +476,13 @@ public class MinStageTests extends OpenSearchTestCase {
         return List.of(provider1, provider2);
     }
 
+    @Override
+    protected Writeable.Reader<MinStage> instanceReader() {
+        return MinStage::readFrom;
+    }
+
+    @Override
+    protected MinStage createTestInstance() {
+        return new MinStage(randomBoolean() ? List.of("service", "region") : List.of());
+    }
 }

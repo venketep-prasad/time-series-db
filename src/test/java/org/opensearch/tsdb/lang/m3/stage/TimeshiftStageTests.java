@@ -10,10 +10,11 @@ package org.opensearch.tsdb.lang.m3.stage;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.common.xcontent.XContentFactory;
-import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -32,12 +33,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class TimeshiftStageTests extends OpenSearchTestCase {
+public class TimeshiftStageTests extends AbstractWireSerializingTestCase<TimeshiftStage> {
 
     // ========== Constructor Tests ==========
 
     public void testConstructor() {
-        // Test various shift amounts using table-driven approach
         // test case: shift millis, expected shift millis, description
         Object[][] testCases = {
             { 0L, 0L, "Zero shift" },
@@ -265,7 +265,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     // ========== Serialization Tests ==========
 
     public void testSerializationRoundtripComprehensive() throws IOException {
-        // Test various shift amounts for comprehensive serialization testing
         TimeValue[] testShifts = {
             TimeValue.timeValueMillis(0),           // Zero
             TimeValue.timeValueSeconds(1),          // 1 second
@@ -320,7 +319,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     }
 
     public void testSerializationStreamPosition() throws IOException {
-        // Test that serialization correctly handles stream position
         TimeshiftStage stage1 = new TimeshiftStage(TimeValue.timeValueHours(1).getMillis());
         TimeshiftStage stage2 = new TimeshiftStage(TimeValue.timeValueHours(2).getMillis());
 
@@ -346,7 +344,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     }
 
     public void testSerializationDataIntegrity() throws IOException {
-        // Test that serialized data maintains integrity
         TimeshiftStage originalStage = new TimeshiftStage(123456789);
 
         try (BytesStreamOutput out = new BytesStreamOutput()) {
@@ -371,7 +368,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     // ========== Factory Integration Tests ==========
 
     public void testFactoryCreateWithArgs() {
-        // Test that the factory can create TimeshiftStage using createWithArgs
         String stageName = "timeshift";
         Map<String, Object> args = Map.of(TimeshiftStage.SHIFT_AMOUNT_ARG, "1h");
 
@@ -384,26 +380,21 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     }
 
     public void testFactoryCreateWithComplexArgs() {
-        // Test factory with various argument types
 
-        // Test with string time value
         Map<String, Object> stringArgs = Map.of(TimeshiftStage.SHIFT_AMOUNT_ARG, "30m");
         PipelineStage stringStage = PipelineStageFactory.createWithArgs("timeshift", stringArgs);
         assertEquals(TimeValue.timeValueMinutes(30).getMillis(), ((TimeshiftStage) stringStage).getShiftMillis());
 
-        // Test with small value
         Map<String, Object> smallArgs = Map.of(TimeshiftStage.SHIFT_AMOUNT_ARG, "30s");
         PipelineStage smallStage = PipelineStageFactory.createWithArgs("timeshift", smallArgs);
         assertEquals(TimeValue.timeValueSeconds(30).getMillis(), ((TimeshiftStage) smallStage).getShiftMillis());
 
-        // Test with numeric value
         Map<String, Object> numericArgs = Map.of(TimeshiftStage.SHIFT_AMOUNT_ARG, 3600000L);
         PipelineStage numericStage = PipelineStageFactory.createWithArgs("timeshift", numericArgs);
         assertEquals(TimeValue.timeValueHours(1).getMillis(), ((TimeshiftStage) numericStage).getShiftMillis());
     }
 
     public void testFactoryRegistration() {
-        // Test that TimeshiftStage is properly registered via annotation
         Set<String> supportedStages = PipelineStageFactory.getSupportedStageTypes();
 
         // Verify TimeshiftStage is registered
@@ -418,7 +409,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     // ========== Reduce Method Tests ==========
 
     public void testReduceMethod() {
-        // Test the reduce method from UnaryPipelineStage interface
         TimeshiftStage stage = new TimeshiftStage(TimeValue.timeValueHours(1).getMillis());
 
         // Create mock TimeSeriesProvider instances
@@ -427,7 +417,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
             createMockTimeSeriesProvider("provider2")
         );
 
-        // Test the reduce method - should throw UnsupportedOperationException for unary stages
         UnsupportedOperationException exception = assertThrows(
             UnsupportedOperationException.class,
             () -> stage.reduce(aggregations, false)
@@ -442,7 +431,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     }
 
     public void testIsGlobalAggregation() {
-        // Test the isGlobalAggregation method inherited from AbstractMapperStage
         TimeshiftStage stage = new TimeshiftStage(TimeValue.timeValueHours(1).getMillis());
         assertFalse("Mapper stages should not be global aggregations", stage.isGlobalAggregation());
     }
@@ -465,7 +453,6 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
     // ========== XContent Serialization Tests ==========
 
     public void testToXContent() throws IOException {
-        // Test XContent serialization
         TimeshiftStage stage = new TimeshiftStage(TimeValue.timeValueMinutes(30).getMillis());
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
@@ -476,5 +463,42 @@ public class TimeshiftStageTests extends OpenSearchTestCase {
         String json = builder.toString();
         assertTrue("JSON should contain shift_amount field", json.contains(TimeshiftStage.SHIFT_AMOUNT_ARG));
         assertTrue("JSON should contain time value", json.contains("30m") || json.contains("1800000"));
+    }
+
+    /**
+     * Test equals method for TimeshiftStage.
+     */
+    public void testEquals() {
+        TimeshiftStage stage1 = new TimeshiftStage(1000L);
+        TimeshiftStage stage2 = new TimeshiftStage(1000L);
+
+        assertEquals("Equal TimeshiftStages should be equal", stage1, stage2);
+
+        TimeshiftStage stageDifferent = new TimeshiftStage(2000L);
+        assertNotEquals("Different shift millis should not be equal", stage1, stageDifferent);
+
+        assertEquals("Stage should equal itself", stage1, stage1);
+
+        assertNotEquals("Stage should not equal null", null, stage1);
+
+        assertNotEquals("Stage should not equal different class", "string", stage1);
+
+        TimeshiftStage stageZero1 = new TimeshiftStage(0L);
+        TimeshiftStage stageZero2 = new TimeshiftStage(0L);
+        assertEquals("Zero shift millis should be equal", stageZero1, stageZero2);
+
+        TimeshiftStage stageLarge1 = new TimeshiftStage(Long.MAX_VALUE);
+        TimeshiftStage stageLarge2 = new TimeshiftStage(Long.MAX_VALUE);
+        assertEquals("Large shift millis should be equal", stageLarge1, stageLarge2);
+    }
+
+    @Override
+    protected Writeable.Reader<TimeshiftStage> instanceReader() {
+        return TimeshiftStage::readFrom;
+    }
+
+    @Override
+    protected TimeshiftStage createTestInstance() {
+        return new TimeshiftStage(randomLongBetween(-100000, 100000));
     }
 }

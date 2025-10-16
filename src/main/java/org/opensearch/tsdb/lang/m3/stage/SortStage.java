@@ -355,4 +355,23 @@ public class SortStage implements UnaryPipelineStage {
     public boolean supportConcurrentSegmentSearch() {
         return true;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        SortStage other = (SortStage) obj;
+        return sortBy == other.sortBy && sortOrder == other.sortOrder;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = sortBy != null ? sortBy.hashCode() : 0;
+        result = 31 * result + (sortOrder != null ? sortOrder.hashCode() : 0);
+        return result;
+    }
 }

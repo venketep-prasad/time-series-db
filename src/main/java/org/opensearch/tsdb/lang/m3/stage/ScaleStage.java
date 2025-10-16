@@ -145,4 +145,21 @@ public class ScaleStage implements UnaryPipelineStage {
         return true;
     }
 
+    @Override
+    public int hashCode() {
+        return Double.hashCode(factor);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        ScaleStage that = (ScaleStage) obj;
+        return Double.compare(that.factor, factor) == 0;
+    }
+
 }
