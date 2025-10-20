@@ -114,11 +114,7 @@ public abstract class BaseQueryExecutor {
         String expected = expectedError == null ? null : expectedError.trim();
         String actual = actualError == null ? null : actualError.trim();
 
-        assertEquals(
-            String.format(Locale.ROOT, "%s: Error mismatch", queryName),
-            expected,
-            actual
-        );
+        assertEquals(String.format(Locale.ROOT, "%s: Error mismatch", queryName), expected, actual);
     }
 
     private PromMatrixResponse convertExpectedToPromMatrix(QueryConfig query) {

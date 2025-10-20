@@ -454,7 +454,7 @@ public class ByteLabels implements Labels {
         if (hash != Long.MIN_VALUE) return hash;
 
         // TODO: use a faster hash function, the current one is 2-3x slower then the one in prometheus
-        hash = MurmurHash3.hash128(data, 0, data.length, 0, new MurmurHash3.Hash128()).hashCode();
+        hash = MurmurHash3.hash128(data, 0, data.length, 0, new MurmurHash3.Hash128()).h1;
         return hash;
     }
 

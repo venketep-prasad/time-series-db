@@ -7,6 +7,11 @@
  */
 package org.opensearch.tsdb;
 
+import org.opensearch.common.settings.Setting;
+import org.opensearch.index.IndexSettings;
+import org.opensearch.index.engine.EngineFactory;
+import org.opensearch.index.engine.TSDBEngineFactory;
+import org.opensearch.plugins.EnginePlugin;
 import org.opensearch.plugins.Plugin;
 import org.opensearch.plugins.SearchPlugin;
 import org.opensearch.tsdb.query.aggregator.InternalTimeSeries;
@@ -14,16 +19,32 @@ import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregationBuil
 import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Plugin for time-series database (TSDB) engine
  */
-public class TSDBPlugin extends Plugin implements SearchPlugin {
+public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin {
+
+    /**
+     * This setting identifies if the tsdb engine is enabled for the index.
+     */
+    public static final Setting<Boolean> TSDB_ENGINE_ENABLED = Setting.boolSetting(
+        "index.tsdb_engine.enabled",
+        false,
+        Setting.Property.IndexScope,
+        Setting.Property.Final
+    );
 
     /**
      * Default constructor
      */
     public TSDBPlugin() {}
+
+    @Override
+    public List<Setting<?>> getSettings() {
+        return List.of(TSDB_ENGINE_ENABLED);
+    }
 
     @Override
     public List<AggregationSpec> getAggregations() {
@@ -47,5 +68,13 @@ public class TSDBPlugin extends Plugin implements SearchPlugin {
                 TimeSeriesCoordinatorAggregationBuilder::parse
             ).addResultReader(InternalTimeSeries::new)
         );
+    }
+
+    @Override
+    public Optional<EngineFactory> getEngineFactory(IndexSettings indexSettings) {
+        if (TSDB_ENGINE_ENABLED.get(indexSettings.getSettings())) {
+            return Optional.of(new TSDBEngineFactory());
+        }
+        return Optional.empty();
     }
 }

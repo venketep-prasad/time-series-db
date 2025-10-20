@@ -11,8 +11,10 @@ import org.apache.logging.log4j.Logger;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.common.logging.Loggers;
 import org.opensearch.core.index.shard.ShardId;
+import org.opensearch.tsdb.core.chunk.Chunk;
 import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexManager;
 import org.opensearch.tsdb.core.index.live.LiveSeriesIndex;
+import org.opensearch.tsdb.core.index.live.MemChunkReader;
 import org.opensearch.tsdb.core.index.live.SeriesLoader;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
@@ -411,6 +413,41 @@ public class Head {
          * @param options configuration options for chunk management
          */
         public record AppendContext(ChunkOptions options) {
+        }
+    }
+
+    /**
+     * Returns a chunk reader for accessing in-memory chunks from the head storage.
+     *
+     * @return a HeadChunkReader
+     */
+    public MemChunkReader getChunkReader() {
+        return new HeadChunkReader();
+    }
+
+    private class HeadChunkReader implements MemChunkReader {
+
+        @Override
+        public List<Chunk> getChunks(long reference) {
+            MemSeries series = seriesMap.getByReference(reference);
+
+            if (series == null) {
+                return List.of();
+            }
+
+            List<Chunk> chunks = new ArrayList<>();
+            series.lock();
+            try {
+                MemChunk current = series.getHeadChunk();
+                while (current != null) {
+                    chunks.add(current.getChunk());
+                    current = current.getPrev();
+                }
+            } finally {
+                series.unlock();
+            }
+
+            return chunks;
         }
     }
 }

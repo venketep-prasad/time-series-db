@@ -1,0 +1,253 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The OpenSearch Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+package org.opensearch.index.engine;
+
+import org.opensearch.action.DocWriteResponse;
+import org.opensearch.action.index.IndexResponse;
+import org.opensearch.action.search.SearchResponse;
+import org.opensearch.common.settings.Settings;
+import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.index.query.MatchAllQueryBuilder;
+import org.opensearch.plugins.Plugin;
+import org.opensearch.search.aggregations.AggregationBuilder;
+import org.opensearch.test.OpenSearchSingleNodeTestCase;
+import org.opensearch.tsdb.TSDBPlugin;
+import org.opensearch.tsdb.core.model.FloatSample;
+import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.query.aggregator.InternalTimeSeries;
+import org.opensearch.tsdb.query.aggregator.TimeSeries;
+import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static org.opensearch.test.hamcrest.OpenSearchAssertions.assertHitCount;
+import static org.opensearch.test.hamcrest.OpenSearchAssertions.assertSearchResponse;
+import static org.opensearch.tsdb.core.mapping.Constants.Mapping.DEFAULT_INDEX_MAPPING;
+import static org.opensearch.tsdb.utils.TSDBTestUtils.createSampleJson;
+
+public class TSDBEngineSingleNodeTests extends OpenSearchSingleNodeTestCase {
+
+    private static final String TEST_INDEX_NAME = "test-metrics-index";
+
+    @Override
+    protected Collection<Class<? extends Plugin>> getPlugins() {
+        return Collections.singleton(TSDBPlugin.class);
+    }
+
+    @Override
+    protected boolean resetNodeAfterTest() {
+        return true;
+    }
+
+    /**
+     * Helper method to create index with time series mapping and settings
+     */
+    private void createMetricsIndex() {
+        try {
+            client().admin()
+                .indices()
+                .prepareCreate(TEST_INDEX_NAME)
+                .setSettings(
+                    Settings.builder()
+                        .put("index.tsdb_engine.enabled", true)
+                        .put("index.queries.cache.enabled", false)
+                        .put("index.requests.cache.enable", false)
+                        .build()
+                )
+                .setMapping(DEFAULT_INDEX_MAPPING)
+                .get();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create metrics index", e);
+        }
+    }
+
+    public void testMetricsIndexingAndLookup() throws IOException {
+        // Create index with time series mapping
+        createMetricsIndex();
+
+        // Index samples for series 1
+        String series1Sample1 = createSampleJson("__name__ http_requests_total method POST handler /api/items", 1712576200, 1024.0);
+
+        IndexResponse response1 = client().prepareIndex(TEST_INDEX_NAME).setId("1").setSource(series1Sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response1.getResult());
+
+        String series1Sample2 = createSampleJson("__name__ http_requests_total method POST handler /api/items", 1712576400, 1026.0);
+        IndexResponse response2 = client().prepareIndex(TEST_INDEX_NAME).setId("2").setSource(series1Sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response2.getResult());
+
+        // Index samples for series 2
+        String series2Sample1 = createSampleJson("__name__ cpu_usage host server1", 1712576200, 85.5);
+        IndexResponse response3 = client().prepareIndex(TEST_INDEX_NAME).setId("3").setSource(series2Sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response3.getResult());
+
+        // Refresh to make documents searchable
+        client().admin().indices().prepareRefresh(TEST_INDEX_NAME).get();
+
+        SearchResponse searchResponse = client().prepareSearch(TEST_INDEX_NAME).setQuery(new MatchAllQueryBuilder()).setSize(10).get();
+        assertHitCount(searchResponse, 2);
+        assertEquals(2, searchResponse.getHits().getHits().length);
+    }
+
+    /**
+     * Test that samples persist across index close/reopen without flush (via translog replay)
+     */
+    public void testTranslogReplayByReopeningIndex() throws IOException {
+        createMetricsIndex();
+
+        // Index 2 samples for the same series
+        String sample1 = createSampleJson("__name__ test_metric instance server1", 1000, 10.0);
+        IndexResponse response1 = client().prepareIndex(TEST_INDEX_NAME).setSource(sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response1.getResult());
+
+        String sample2 = createSampleJson("__name__ test_metric instance server1", 2000, 20.0);
+        IndexResponse response2 = client().prepareIndex(TEST_INDEX_NAME).setSource(sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response2.getResult());
+
+        // Close and reopen index without flush - samples should be recovered from translog
+        client().admin().indices().prepareClose(TEST_INDEX_NAME).get();
+        client().admin().indices().prepareOpen(TEST_INDEX_NAME).get();
+
+        // Query after reopen
+        client().admin().indices().prepareRefresh(TEST_INDEX_NAME).get();
+        SearchResponse searchResponse = client().prepareSearch(TEST_INDEX_NAME).setQuery(new MatchAllQueryBuilder()).get();
+
+        // Should have 1 series with 2 samples
+        assertHitCount(searchResponse, 1);
+    }
+
+    /**
+     * Test empty index returns no results
+     */
+    public void testEmptyIndexQuery() {
+        createMetricsIndex();
+        SearchResponse searchResponse = client().prepareSearch(TEST_INDEX_NAME).setQuery(new MatchAllQueryBuilder()).get();
+        assertHitCount(searchResponse, 0);
+    }
+
+    public void testIndexingAndLookupWithFlush() throws IOException {
+        createMetricsIndex();
+
+        // Index some samples
+        String sample1 = createSampleJson("__name__ metric1 host server1", 1000, 10.0);
+        IndexResponse response1 = client().prepareIndex(TEST_INDEX_NAME).setSource(sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response1.getResult());
+
+        String sample2 = createSampleJson("__name__ metric2 host server2", 2000, 20.0);
+        IndexResponse response2 = client().prepareIndex(TEST_INDEX_NAME).setSource(sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response2.getResult());
+
+        // Flush to create a commit point
+        client().admin().indices().prepareFlush(TEST_INDEX_NAME).get();
+
+        // Refresh to ensure data is searchable
+        client().admin().indices().prepareRefresh(TEST_INDEX_NAME).get();
+
+        // Verify data is indexed
+        SearchResponse searchResponse = client().prepareSearch(TEST_INDEX_NAME).setQuery(new MatchAllQueryBuilder()).get();
+        assertHitCount(searchResponse, 2);
+    }
+
+    /**
+     * Test time series data retrieval using TimeSeriesUnfoldAggregationBuilder
+     * Validates sample timestamps and values using aggregations
+     */
+    public void testTimeSeriesAggregationWithUnfold() throws IOException {
+        createMetricsIndex();
+
+        // Index samples for server1 in us-east
+        String server1Sample1 = createSampleJson("server server1 region us-east", 1000, 10.0);
+        IndexResponse response1 = client().prepareIndex(TEST_INDEX_NAME).setSource(server1Sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response1.getResult());
+
+        String server1Sample2 = createSampleJson("server server1 region us-east", 2000, 15.0);
+        IndexResponse response2 = client().prepareIndex(TEST_INDEX_NAME).setSource(server1Sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response2.getResult());
+
+        String server1Sample3 = createSampleJson("server server1 region us-east", 3000, 20.0);
+        IndexResponse response3 = client().prepareIndex(TEST_INDEX_NAME).setSource(server1Sample3, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response3.getResult());
+
+        // Index samples for server2 in us-east
+        String server2Sample1 = createSampleJson("server server2 region us-east", 1000, 5.0);
+        IndexResponse response4 = client().prepareIndex(TEST_INDEX_NAME).setSource(server2Sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response4.getResult());
+
+        String server2Sample2 = createSampleJson("server server2 region us-east", 2000, 8.0);
+        IndexResponse response5 = client().prepareIndex(TEST_INDEX_NAME).setSource(server2Sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response5.getResult());
+
+        // Index samples for server3 in us-west
+        String server3Sample1 = createSampleJson("server server3 region us-west", 1000, 100.0);
+        IndexResponse response6 = client().prepareIndex(TEST_INDEX_NAME).setSource(server3Sample1, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response6.getResult());
+
+        String server3Sample2 = createSampleJson("server server3 region us-west", 2000, 105.0);
+        IndexResponse response7 = client().prepareIndex(TEST_INDEX_NAME).setSource(server3Sample2, XContentType.JSON).get();
+        assertEquals(DocWriteResponse.Result.CREATED, response7.getResult());
+
+        // Refresh index
+        client().admin().indices().prepareRefresh(TEST_INDEX_NAME).get();
+
+        // Create aggregation with TimeSeriesUnfoldAggregationBuilder
+        AggregationBuilder aggregation = new TimeSeriesUnfoldAggregationBuilder("raw_unfold", List.of(), 1000L, 5000L, 1000L);
+
+        // Execute search with aggregation
+        SearchResponse response = client().prepareSearch(TEST_INDEX_NAME)
+            .setSize(0)  // Aggregation-only query
+            .addAggregation(aggregation)
+            .get();
+
+        assertSearchResponse(response);
+
+        // Extract aggregation results
+        InternalTimeSeries unfoldResult = response.getAggregations().get("raw_unfold");
+        assertNotNull("TimeSeriesUnfold result should not be null", unfoldResult);
+
+        List<TimeSeries> timeSeries = unfoldResult.getTimeSeries();
+        assertNotNull("Time series list should not be null", timeSeries);
+
+        // Verify we have 3 time series (one per server)
+        assertEquals("Should have 3 time series", 3, timeSeries.size());
+
+        // Validate each time series by comparing with expected samples
+        for (TimeSeries series : timeSeries) {
+            Map<String, String> labels = series.getLabelsMap();
+            assertNotNull("Labels should not be null", labels);
+            assertTrue("Should have 'server' label", labels.containsKey("server"));
+            assertTrue("Should have 'region' label", labels.containsKey("region"));
+
+            String serverValue = labels.get("server");
+            String regionValue = labels.get("region");
+            List<Sample> actualSamples = series.getSamples();
+            assertNotNull("Samples should not be null", actualSamples);
+
+            // Build expected samples and compare
+            List<Sample> expectedSamples;
+            if ("server1".equals(serverValue)) {
+                assertEquals("server1 should be in us-east", "us-east", regionValue);
+                expectedSamples = Arrays.asList(new FloatSample(1000L, 10.0), new FloatSample(2000L, 15.0), new FloatSample(3000L, 20.0));
+            } else if ("server2".equals(serverValue)) {
+                assertEquals("server2 should be in us-east", "us-east", regionValue);
+                expectedSamples = Arrays.asList(new FloatSample(1000L, 5.0), new FloatSample(2000L, 8.0));
+            } else if ("server3".equals(serverValue)) {
+                assertEquals("server3 should be in us-west", "us-west", regionValue);
+                expectedSamples = Arrays.asList(new FloatSample(1000L, 100.0), new FloatSample(2000L, 105.0));
+            } else {
+                fail("Unexpected server value: " + serverValue);
+                return;
+            }
+
+            assertEquals("Samples for " + serverValue, expectedSamples, actualSamples);
+        }
+    }
+}

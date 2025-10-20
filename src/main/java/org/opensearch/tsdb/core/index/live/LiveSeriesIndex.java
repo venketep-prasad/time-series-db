@@ -198,6 +198,38 @@ public class LiveSeriesIndex {
     }
 
     /**
+     * Take a snapshot of the current commit and return it with a release action.
+     * Returns null if no index commit is available (e.g., newly created index with no commits yet).
+     *
+     * @return SnapshotResult containing the IndexCommit and release action, or null if no commit is available
+     * @throws IOException if snapshot fails due to I/O errors
+     */
+    public SnapshotResult snapshotWithReleaseAction() throws IOException {
+        try {
+            IndexCommit snapshot = snapshot();
+            Runnable releaseAction = () -> {
+                try {
+                    release(snapshot);
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to release live series index snapshot", e);
+                }
+            };
+            return new SnapshotResult(snapshot, releaseAction);
+        } catch (IllegalStateException e) {
+            // No index commit available - this can happen when the index is newly created and no commits exist yet
+            return null;
+        }
+    }
+
+    /**
+     * Result of snapshotWithReleaseAction, containing the IndexCommit and release action.
+     * @param indexCommit the IndexCommit snapshot
+     * @param releaseAction Runnable to release the snapshot
+     */
+    public record SnapshotResult(IndexCommit indexCommit, Runnable releaseAction) {
+    }
+
+    /**
      * Commit the current state, including live series references and their max sequence numbers. MaxSeqNo is used to remove stale series,
      * i.e. series that have not received any writes since the checkpoint.
      *

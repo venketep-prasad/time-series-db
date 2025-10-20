@@ -71,5 +71,41 @@ public final class Constants {
         private Mapping() {
             // Utility class
         }
+
+        /**
+         * The timestamp field of the sample in the indexing request document.
+         */
+        public static final String SAMPLE_TIMESTAMP = "timestamp";
+
+        /**
+         * The value field of the sample in the indexing request document.
+         */
+        public static final String SAMPLE_VALUE = "value";
+
+        /**
+         * The default index mappings to be used for TSDB index.
+         */
+        public static final String DEFAULT_INDEX_MAPPING = """
+            {
+              "properties": {
+                "labels": {
+                  "type": "keyword"
+                },
+                "timestamp": {
+                  "type": "date",
+                  "format": "epoch_millis"
+                },
+                "value": {
+                  "type": "double"
+                },
+                "minTimestamp": {
+                  "type": "long"
+                },
+                "maxTimestamp": {
+                  "type": "long"
+                }
+              }
+            }
+            """;
     }
 }
