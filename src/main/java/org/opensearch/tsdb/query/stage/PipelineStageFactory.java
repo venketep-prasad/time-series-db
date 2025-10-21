@@ -12,6 +12,7 @@ import org.opensearch.tsdb.lang.m3.stage.AbsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasStage;
 import org.opensearch.tsdb.lang.m3.stage.AvgStage;
+import org.opensearch.tsdb.lang.m3.stage.IsNonNullStage;
 import org.opensearch.tsdb.lang.m3.stage.KeepLastValueStage;
 import org.opensearch.tsdb.lang.m3.stage.HistogramPercentileStage;
 import org.opensearch.tsdb.lang.m3.stage.MaxStage;
@@ -100,6 +101,7 @@ public class PipelineStageFactory {
             registerStage(AsPercentStage.class);
             registerStage(AvgStage.class);
             registerStage(HistogramPercentileStage.class);
+            registerStage(IsNonNullStage.class);
             registerStage(KeepLastValueStage.class);
             registerStage(MaxStage.class);
             registerStage(MinStage.class);
