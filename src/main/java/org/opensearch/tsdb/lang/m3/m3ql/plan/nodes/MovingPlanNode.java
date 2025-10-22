@@ -7,8 +7,9 @@
  */
 package org.opensearch.tsdb.lang.m3.m3ql.plan.nodes;
 
-import org.opensearch.tsdb.lang.m3.common.AggregationType;
+import org.opensearch.tsdb.lang.m3.common.Constants;
 import org.opensearch.tsdb.lang.m3.common.M3Duration;
+import org.opensearch.tsdb.lang.m3.common.WindowAggregationType;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.FunctionNode;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.ValueNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.M3PlannerContext;
@@ -23,7 +24,7 @@ import java.util.Locale;
 public class MovingPlanNode extends M3PlanNode {
 
     private final String windowSize; // 2h, 5m etc.
-    private final AggregationType aggregationType;
+    private final WindowAggregationType aggregationType;
 
     /**
      * Constructor for MovingPlanNode.
@@ -31,7 +32,7 @@ public class MovingPlanNode extends M3PlanNode {
      * @param windowSize the size of the moving window (e.g., "5m" for 5 minutes or "10" for 10 points)
      * @param aggregationType the type of aggregation to perform over the moving window
      */
-    public MovingPlanNode(int id, String windowSize, AggregationType aggregationType) {
+    public MovingPlanNode(int id, String windowSize, WindowAggregationType aggregationType) {
         super(id);
         this.windowSize = windowSize;
         this.aggregationType = aggregationType;
@@ -73,22 +74,33 @@ public class MovingPlanNode extends M3PlanNode {
 
     /**
      * Returns the aggregation type for the moving window operation.
-     * @return AggregationType
+     * @return WindowAggregationType aggregation type of the window operation
      */
-    public AggregationType getAggregationType() {
+    public WindowAggregationType getAggregationType() {
         return aggregationType;
     }
 
     /**
      * Factory method to create a MovingPlanNode from a FunctionNode.
-     * Expects the function node to represent a MOVING function with exactly two arguments:
-     * window size and aggregation type.
+     * Expects the function node to represent a MOVING function with exactly two arguments, window size and aggregation type. Also
+     * accepts a legacy function with only one.
      *
      * @param functionNode the function node representing the MOVING function
      * @return a new MovingPlanNode instance
      * @throws IllegalArgumentException if the function node does not have exactly two arguments or if the arguments are not valid
      */
     public static MovingPlanNode of(FunctionNode functionNode) {
+        // Support legacy moving function syntax, e.g. movingAverage
+        if (functionNode.getChildren().size() == 1) {
+            if (!(functionNode.getChildren().getFirst() instanceof ValueNode valueNode)) {
+                throw new IllegalArgumentException("Argument must be a value representing the windowSize");
+            }
+            String windowSize = valueNode.getValue();
+            WindowAggregationType aggType = getAggregationFromMoving(functionNode.getFunctionName());
+            return new MovingPlanNode(M3PlannerContext.generateId(), windowSize, aggType);
+        }
+
+        // Support standard moving function with two arguments
         if (functionNode.getChildren().size() != 2) {
             throw new IllegalArgumentException("Moving function must have exactly two arguments: window size and aggregation type");
         }
@@ -102,6 +114,17 @@ public class MovingPlanNode extends M3PlanNode {
         String windowSize = firstValueNode.getValue();
         String aggregationType = secondValueNode.getValue();
 
-        return new MovingPlanNode(M3PlannerContext.generateId(), windowSize, AggregationType.fromString(aggregationType));
+        return new MovingPlanNode(M3PlannerContext.generateId(), windowSize, WindowAggregationType.fromString(aggregationType));
+    }
+
+    private static WindowAggregationType getAggregationFromMoving(String functionName) {
+        return switch (functionName) {
+            case Constants.Functions.MOVING_AVERAGE -> WindowAggregationType.AVG;
+            case Constants.Functions.MOVING_MAX -> WindowAggregationType.MAX;
+            case Constants.Functions.MOVING_MEDIAN -> WindowAggregationType.MEDIAN;
+            case Constants.Functions.MOVING_MIN -> WindowAggregationType.MIN;
+            case Constants.Functions.MOVING_SUM -> WindowAggregationType.SUM;
+            default -> throw new IllegalArgumentException("Invalid moving function name: " + functionName);
+        };
     }
 }

@@ -1,4 +1,5 @@
-# test timeshift
+# TODO repeated filter aggregations should be de-duplicated in the generated dsl
+# test timeshift, with re-used sub-query
 a = (fetch region:west
   | sum city_name
   | transformNull

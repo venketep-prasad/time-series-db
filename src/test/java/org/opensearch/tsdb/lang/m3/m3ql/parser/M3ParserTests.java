@@ -41,8 +41,8 @@ public class M3ParserTests extends OpenSearchTestCase {
             List<Object[]> testCases = new ArrayList<>();
 
             // Add AST generation test cases
-            NavigableMap<String, String> queries = TestUtils.getResourceFilesWithExtension("lang/m3/queries", ".m3ql");
-            NavigableMap<String, String> expectedResults = TestUtils.getResourceFilesWithExtension("lang/m3/ast", ".txt");
+            NavigableMap<String, String> queries = TestUtils.getResourceFilesWithExtension("lang/m3/data/queries", ".m3ql");
+            NavigableMap<String, String> expectedResults = TestUtils.getResourceFilesWithExtension("lang/m3/data/ast", ".txt");
 
             if (queries.size() != expectedResults.size()) {
                 throw new IllegalStateException("Number of query files does not match result files");

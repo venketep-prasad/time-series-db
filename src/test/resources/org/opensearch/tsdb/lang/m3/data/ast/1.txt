@@ -16,3 +16,5 @@ ROOT
     FUNCTION(moving)
       VALUE(3h)
       VALUE(sum)
+    FUNCTION(keepLastValue)
+      VALUE(2h)

@@ -14,6 +14,7 @@ import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.lang.m3.common.WindowAggregationType;
 import org.opensearch.tsdb.lang.m3.stage.moving.AvgCircularBuffer;
 import org.opensearch.tsdb.lang.m3.stage.moving.MaxCircularBuffer;
 import org.opensearch.tsdb.lang.m3.stage.moving.MinCircularBuffer;
@@ -34,16 +35,15 @@ import java.util.Objects;
 /**
  * Pipeline stage that implements M3QL's moving function for time-based intervals.
  * Uses circular buffers for efficient computation of moving aggregations.
- *
+ * <p>
  * Supported functions: sum, avg, max, min, median
- * Default function: sum
  */
 @PipelineStageAnnotation(name = "moving")
 public class MovingStage implements UnaryPipelineStage {
     /** The name of this stage. */
     public static final String NAME = "moving";
     private final long interval;
-    private final String function;
+    private final WindowAggregationType function;
 
     /**
      * Creates a moving stage with the specified interval and aggregation function.
@@ -51,18 +51,9 @@ public class MovingStage implements UnaryPipelineStage {
      * @param interval the window size in the same time unit as sample timestamps
      * @param function the aggregation function (sum, avg, min, max, median)
      */
-    public MovingStage(long interval, String function) {
+    public MovingStage(long interval, WindowAggregationType function) {
         this.interval = interval;
-        this.function = function.toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Creates a moving stage with the specified interval using sum as default function.
-     *
-     * @param interval the window size in the same time unit as sample timestamps
-     */
-    public MovingStage(long interval) {
-        this(interval, "sum");
+        this.function = function;
     }
 
     @Override
@@ -133,12 +124,11 @@ public class MovingStage implements UnaryPipelineStage {
 
     private WindowTransformer createTransformer(int windowPoints) {
         return switch (function) {
-            case "sum" -> new SumCircularBuffer(windowPoints);
-            case "avg" -> new AvgCircularBuffer(windowPoints);
-            case "max" -> new MaxCircularBuffer(windowPoints);
-            case "min" -> new MinCircularBuffer(windowPoints);
-            case "median" -> new RunningMedian(windowPoints);
-            default -> throw new IllegalArgumentException("Unsupported moving function: " + function);
+            case AVG -> new AvgCircularBuffer(windowPoints);
+            case MAX -> new MaxCircularBuffer(windowPoints);
+            case MEDIAN -> new RunningMedian(windowPoints);
+            case MIN -> new MinCircularBuffer(windowPoints);
+            case SUM -> new SumCircularBuffer(windowPoints);
         };
     }
 
@@ -150,13 +140,13 @@ public class MovingStage implements UnaryPipelineStage {
     @Override
     public void toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
         builder.field("interval", interval);
-        builder.field("function", function);
+        builder.field("function", function.toString().toLowerCase(Locale.ROOT));
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeLong(interval);
-        out.writeString(function);
+        out.writeString(function.name().toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -169,7 +159,7 @@ public class MovingStage implements UnaryPipelineStage {
     public static MovingStage readFrom(StreamInput in) throws IOException {
         long interval = in.readLong();
         String function = in.readString();
-        return new MovingStage(interval, function);
+        return new MovingStage(interval, WindowAggregationType.fromString(function));
     }
 
     /**
@@ -181,7 +171,7 @@ public class MovingStage implements UnaryPipelineStage {
      * @throws IllegalArgumentException if required parameters are missing
      */
     public static MovingStage fromArgs(Map<String, Object> args) {
-        String function = args.containsKey("function") ? (String) args.get("function") : "sum";
+        WindowAggregationType function = WindowAggregationType.fromString((String) args.get("function"));
 
         if (args.containsKey("interval")) {
             long interval = ((Number) args.get("interval")).longValue();

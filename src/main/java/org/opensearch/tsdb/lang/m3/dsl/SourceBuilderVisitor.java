@@ -1,0 +1,710 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The OpenSearch Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+package org.opensearch.tsdb.lang.m3.dsl;
+
+import org.opensearch.index.query.BoolQueryBuilder;
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.index.query.QueryBuilders;
+import org.opensearch.search.aggregations.PipelineAggregationBuilder;
+import org.opensearch.search.aggregations.bucket.filter.FilterAggregationBuilder;
+import org.opensearch.search.builder.SearchSourceBuilder;
+import org.opensearch.tsdb.core.mapping.Constants;
+import org.opensearch.tsdb.core.model.LabelConstants;
+import org.opensearch.tsdb.lang.m3.common.AggregationType;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AbsPlanNode;
+import org.opensearch.tsdb.lang.m3.stage.AbsStage;
+import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
+import org.opensearch.tsdb.lang.m3.stage.AliasStage;
+import org.opensearch.tsdb.lang.m3.stage.AsPercentStage;
+import org.opensearch.tsdb.lang.m3.stage.AvgStage;
+import org.opensearch.tsdb.lang.m3.stage.HistogramPercentileStage;
+import org.opensearch.tsdb.lang.m3.stage.KeepLastValueStage;
+import org.opensearch.tsdb.lang.m3.stage.MaxStage;
+import org.opensearch.tsdb.lang.m3.stage.MinStage;
+import org.opensearch.tsdb.lang.m3.stage.MovingStage;
+import org.opensearch.tsdb.lang.m3.stage.PerSecondStage;
+import org.opensearch.tsdb.lang.m3.stage.RemoveEmptyStage;
+import org.opensearch.tsdb.lang.m3.stage.ScaleStage;
+import org.opensearch.tsdb.lang.m3.stage.SortStage;
+import org.opensearch.tsdb.lang.m3.stage.SumStage;
+import org.opensearch.tsdb.lang.m3.stage.TimeshiftStage;
+import org.opensearch.tsdb.lang.m3.stage.TransformNullStage;
+import org.opensearch.tsdb.lang.m3.stage.UnionStage;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.HistogramPercentilePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.KeepLastValuePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.M3PlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.MovingPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.PerSecondPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.RemoveEmptyPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ScalePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SortPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.TimeshiftPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.TransformNullPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.UnionPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ValueFilterPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.visitor.M3PlanVisitor;
+import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregationBuilder;
+import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregator;
+import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
+import org.opensearch.tsdb.query.stage.PipelineStage;
+import org.opensearch.tsdb.query.stage.UnaryPipelineStage;
+import org.opensearch.tsdb.query.utils.AggregationConstants;
+
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Stack;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
+
+/**
+ * Executor for M3QL plans that produces a QueryComponentHolder.
+ */
+public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.ComponentHolder> {
+    private static final LinkedHashMap<String, TimeSeriesCoordinatorAggregator.MacroDefinition> EMPTY_MAP = new LinkedHashMap<>();
+    private static final String UNFOLD_NAME_SUFFIX = "_unfold";
+    private static final String COORDINATOR_NAME_SUFFIX = "_coordinator";
+    private static final char MULTI_CHAR_WILDCARD = '*';
+    private static final char SINGLE_CHAR_WILDCARD = '?';
+
+    private final Stack<UnaryPipelineStage> stageStack; // accumulate stages per fetch pipeline
+    private final M3OSTranslator.Params params;
+    private final Context context;
+
+    /**
+     * Constructor for QueryComponentsVisitor.
+     *
+     * @param params params for query translation
+     */
+    public SourceBuilderVisitor(M3OSTranslator.Params params) {
+        this(params, Context.newContext());
+    }
+
+    /**
+     * Private constructor to allow passing context for recursive calls. To when processing sub-plans.
+     *
+     * @param params  params to inherit from parent
+     * @param context context to inherit from parent
+     */
+    private SourceBuilderVisitor(M3OSTranslator.Params params, Context context) {
+        this.params = params;
+        this.context = context;
+        this.stageStack = new Stack<>();
+    }
+
+    private static class Context {
+
+        // Buffer time needed for stages like moving, keepLastValue, etc.
+        private long timeBuffer;
+
+        // Cumulative time shift applied by timeshift stages
+        private long timeShift;
+
+        private Context(long timeBuffer, long timeShift) {
+            this.timeBuffer = timeBuffer;
+            this.timeShift = timeShift;
+        }
+
+        private static Context newContext() {
+            return new Context(0L, 0L);
+        }
+
+        private void setTimeBuffer(long timeBuffer) {
+            this.timeBuffer = timeBuffer;
+        }
+
+        private void setTimeShift(long timeShift) {
+            this.timeShift = timeShift;
+        }
+
+        private long getTimeBuffer() {
+            return timeBuffer;
+        }
+
+        private long getTimeShift() {
+            return timeShift;
+        }
+    }
+
+    @Override
+    public ComponentHolder process(M3PlanNode planNode) {
+        return planNode.accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(AbsPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        stageStack.add(new AbsStage());
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(AggregationPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        UnaryPipelineStage stage = switch (planNode.getAggregationType()) {
+            case AggregationType.SUM -> new SumStage(planNode.getTags());
+            case AggregationType.AVG -> new AvgStage(planNode.getTags());
+            case AggregationType.MIN -> new MinStage(planNode.getTags());
+            case AggregationType.MAX -> new MaxStage(planNode.getTags());
+            case AggregationType.MULTIPLY -> throw new UnsupportedOperationException("multiply aggregation not yet implemented");
+            case AggregationType.COUNT -> throw new UnsupportedOperationException("count aggregation not yet implemented");
+        };
+
+        stageStack.add(stage);
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(AliasPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        stageStack.add(new AliasStage(planNode.getAlias()));
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(AliasByTagsPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        stageStack.add(new AliasByTagsStage(planNode.getTagNames()));
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(BinaryPlanNode planNode) {
+        validateChildCountExact(planNode, 2);
+
+        return unionAndBinaryHandler(planNode);
+    }
+
+    @Override
+    public ComponentHolder visit(FetchPlanNode planNode) {
+        String unfoldName = planNode.getId() + UNFOLD_NAME_SUFFIX;
+        TimeRange fetchTimeRange = getAdjustedFetchTimeRange();
+
+        // Add stages to UnfoldPipelineAggregation based on pushdown setting
+        List<UnaryPipelineStage> unfoldStages = new ArrayList<>();
+
+        if (params.pushdown()) {
+            // Normal pushdown behavior: add stages until we hit a coordinator-only or global aggregation
+            while (!stageStack.isEmpty() && !stageStack.peek().isCoordinatorOnly() && !stageStack.peek().isGlobalAggregation()) {
+                unfoldStages.add(stageStack.pop());
+            }
+
+            // If we hit a coordinator-only stage, don't add it to unfold - it will go to coordinator
+            // If we hit a global aggregation stage, add it to unfold as the last stage
+            if (!stageStack.isEmpty() && !stageStack.peek().isCoordinatorOnly()) {
+                unfoldStages.add(stageStack.pop());
+            }
+        }
+
+        TimeSeriesUnfoldAggregationBuilder unfoldPipelineAggregationBuilder = new TimeSeriesUnfoldAggregationBuilder(
+            unfoldName,
+            unfoldStages,
+            fetchTimeRange.start(),
+            fetchTimeRange.end(),
+            params.step()
+        );
+
+        ComponentHolder holder = new ComponentHolder(planNode.getId());
+
+        // Set the query for the FetchPlanNode
+        holder.setQuery(buildQueryForFetch(planNode, fetchTimeRange));
+
+        // Set the unfold aggregation builder for the FetchPlanNode
+        holder.setUnfoldAggregationBuilder(unfoldPipelineAggregationBuilder);
+
+        // Add remaining stages to coordinator aggregation
+        if (!stageStack.isEmpty()) {
+            List<PipelineStage> stages = new ArrayList<>();
+            while (!stageStack.isEmpty()) {
+                stages.add(stageStack.pop());
+            }
+
+            // Set the coordinator aggregation builder for the FetchPlanNode
+            holder.addPipelineAggregationBuilder(
+                new TimeSeriesCoordinatorAggregationBuilder(
+                    planNode.getId() + COORDINATOR_NAME_SUFFIX,
+                    stages,
+                    EMPTY_MAP,
+                    Map.of(unfoldName, unfoldName),
+                    unfoldName
+                )
+            );
+        }
+
+        return holder;
+    }
+
+    @Override
+    public ComponentHolder visit(KeepLastValuePlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        long originalTimeBuffer = context.getTimeBuffer();
+
+        // Create KeepLastValueStage with optional interval
+        KeepLastValueStage keepLastValueStage;
+        if (planNode.duration().equals(ChronoUnit.FOREVER.getDuration())) {
+            keepLastValueStage = new KeepLastValueStage();
+        } else {
+            keepLastValueStage = new KeepLastValueStage(getDurationAsLong(planNode.duration()));
+
+            // TODO: M3 doesn't look back for keepLastValue, align on behavior (including for non-specified duration)
+            context.setTimeBuffer(Math.max(context.getTimeBuffer(), getDurationAsLong(planNode.duration())));
+        }
+
+        stageStack.add(keepLastValueStage);
+
+        try {
+            return planNode.getChildren().getFirst().accept(this);
+        } finally {
+            context.setTimeBuffer(originalTimeBuffer);
+        }
+    }
+
+    @Override
+    public ComponentHolder visit(MovingPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        // Record the current buffer to re-set later.
+        long originalTimeBuffer = context.getTimeBuffer();
+
+        if (planNode.isPointBased()) {
+            throw new UnsupportedOperationException("Point-based moving windows are not yet supported, use time-based windows");
+        } else {
+            long window = getDurationAsLong(planNode.getTimeDuration());
+            MovingStage movingStage = new MovingStage(window, planNode.getAggregationType());
+            stageStack.add(movingStage);
+            context.setTimeBuffer(Math.max(context.getTimeBuffer(), window));
+        }
+
+        try {
+            return planNode.getChildren().getFirst().accept(this);
+        } finally {
+            context.setTimeBuffer(originalTimeBuffer);
+        }
+    }
+
+    @Override
+    public ComponentHolder visit(PerSecondPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        stageStack.add(new PerSecondStage());
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(SortPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        // SortStage is a global aggregation that should be used as a coordinator stage
+        SortStage sortStage = new SortStage(
+            SortStage.SortBy.fromString(planNode.getSortBy()),
+            SortStage.SortOrder.fromString(planNode.getSortOrder())
+        );
+        stageStack.add(sortStage);
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(HistogramPercentilePlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        HistogramPercentileStage histogramStage = new HistogramPercentileStage(
+            planNode.getBucketId(),
+            planNode.getBucketRange(),
+            planNode.getPercentiles()
+        );
+        stageStack.add(histogramStage);
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(RemoveEmptyPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        stageStack.add(new RemoveEmptyStage());
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(ScalePlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        stageStack.add(new ScaleStage(planNode.getScaleFactor()));
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(TimeshiftPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        long timeshift = getDurationAsLong(planNode.getDuration());
+        stageStack.add(new TimeshiftStage(timeshift));
+
+        context.setTimeShift(context.getTimeShift() + timeshift);
+
+        try {
+            return planNode.getChildren().getFirst().accept(this);
+        } finally {
+            context.setTimeShift(context.getTimeShift() - timeshift);
+        }
+    }
+
+    @Override
+    public ComponentHolder visit(TransformNullPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        // Note: metadata parameters no longer needed - TransformNullStage reads from TimeSeries metadata
+        TransformNullStage transformNullStage = new TransformNullStage(planNode.getFillValue());
+        stageStack.add(transformNullStage);
+
+        return planNode.getChildren().getFirst().accept(this);
+    }
+
+    @Override
+    public ComponentHolder visit(UnionPlanNode planNode) {
+        validateChildCountAtLeast(planNode, 2);
+
+        return unionAndBinaryHandler(planNode);
+    }
+
+    @Override
+    public ComponentHolder visit(ValueFilterPlanNode planNode) {
+        return super.visit(planNode);
+    }
+
+    private static void validateChildCountExact(M3PlanNode node, int expected) {
+        if (node.getChildren().size() != expected) {
+            throw new IllegalStateException(
+                node.getClass().getSimpleName()
+                    + " must have exactly "
+                    + (expected == 1 ? "one child" : (expected == 2 ? "two children" : expected + " children"))
+            );
+        }
+    }
+
+    private static void validateChildCountAtLeast(M3PlanNode node, int minimum) {
+        if (node.getChildren().size() < minimum) {
+            throw new IllegalStateException(
+                node.getClass().getSimpleName()
+                    + " must have at least "
+                    + (minimum == 1 ? "one child" : (minimum == 2 ? "two children" : minimum + " children"))
+            );
+        }
+    }
+
+    private ComponentHolder unionAndBinaryHandler(M3PlanNode planNode) {
+        ComponentHolder[] childComponents = new ComponentHolder[planNode.getChildren().size()];
+        for (int i = 0; i < planNode.getChildren().size(); i++) {
+            M3PlanNode child = planNode.getChildren().get(i);
+            childComponents[i] = new SourceBuilderVisitor(params, context).process(child);
+        }
+        ComponentHolder merged = ComponentHolder.merge(planNode.getId(), childComponents);
+
+        // Add a UnionStage for each additional child beyond the first
+        List<PipelineStage> stages = new ArrayList<>();
+        NavigableMap<String, String> referencesMap = new TreeMap<>();
+
+        for (int i = 1; i < childComponents.length; i++) {
+            ComponentHolder rhsComponents = childComponents[i];
+
+            String rhsId = String.valueOf(rhsComponents.getId());
+
+            PipelineStage stage = getStageFor(planNode, rhsId);
+            stages.add(stage);
+
+            String refChain = getTerminalReference(rhsComponents);
+            referencesMap.put(rhsId, refChain);
+        }
+
+        while (!stageStack.isEmpty()) {
+            stages.add(stageStack.pop());
+        }
+
+        // Add the left-hand side reference
+        ComponentHolder lhsComponents = childComponents[0];
+        String lhsId = String.valueOf(lhsComponents.getId());
+        referencesMap.put(lhsId, getTerminalReference(lhsComponents));
+        merged.addPipelineAggregationBuilder(
+            new TimeSeriesCoordinatorAggregationBuilder(String.valueOf(planNode.getId()), stages, EMPTY_MAP, referencesMap, lhsId)
+        );
+
+        return merged;
+    }
+
+    private PipelineStage getStageFor(M3PlanNode planNode, String rhsReferenceName) {
+        if (planNode instanceof BinaryPlanNode binaryPlanNode) {
+            return switch (binaryPlanNode.getType()) {
+                case AS_PERCENT -> new AsPercentStage(rhsReferenceName);
+                // TODO: return DiffStage once implemented
+                case DIFF -> throw new UnsupportedOperationException("diff not yet implemented");
+                // TODO: return DivideStage once implemented
+                case DIVIDE_SERIES -> throw new UnsupportedOperationException("divideSeries not yet implemented");
+            };
+        }
+        if (planNode instanceof UnionPlanNode) {
+            return new UnionStage(rhsReferenceName);
+        }
+        throw new IllegalArgumentException("Unsupported plan node type for binary operation: " + planNode.getClass().getSimpleName());
+    }
+
+    private QueryBuilder buildQueryForFetch(FetchPlanNode planNode, TimeRange range) {
+        // In the format field => [value1, value2, ...]
+        Map<String, List<String>> matchFilters = planNode.getMatchFilters();
+        Map<String, List<String>> inverseMatchFilters = planNode.getInverseMatchFilters();
+
+        if (matchFilters.isEmpty()) {
+            throw new IllegalArgumentException("FetchPlanNode must have at least one match");
+        }
+
+        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
+        // Add filter clauses from matchFilters
+        for (Map.Entry<String, List<String>> entry : matchFilters.entrySet()) {
+            String field = entry.getKey();
+            List<String> values = entry.getValue();
+            boolQuery.filter(createFieldQuery(field, values));
+        }
+
+        // Add must_not clauses from inverseMatchFilters
+        for (Map.Entry<String, List<String>> entry : inverseMatchFilters.entrySet()) {
+            String field = entry.getKey();
+            List<String> values = entry.getValue();
+            boolQuery.mustNot(createFieldQuery(field, values));
+        }
+
+        // Add time filtering
+        boolQuery.filter(QueryBuilders.rangeQuery(Constants.IndexSchema.MIN_TIMESTAMP).lte(range.end));
+        boolQuery.filter(QueryBuilders.rangeQuery(Constants.IndexSchema.MAX_TIMESTAMP).gte(range.start));
+
+        return boolQuery;
+    }
+
+    private QueryBuilder createFieldQuery(String field, List<String> values) {
+        // If multiple values, build a should query (OR)
+        if (values.size() == 1) {
+            String value = values.getFirst();
+            if (containsWildcard(value)) {
+                return QueryBuilders.wildcardQuery(Constants.IndexSchema.LABELS, labelFilterString(field, value));
+            } else {
+                return QueryBuilders.termQuery(Constants.IndexSchema.LABELS, labelFilterString(field, value));
+            }
+        } else {
+            BoolQueryBuilder innerBool = QueryBuilders.boolQuery();
+            for (String value : values) {
+                if (containsWildcard(value)) {
+                    innerBool.should(QueryBuilders.wildcardQuery(Constants.IndexSchema.LABELS, labelFilterString(field, value)));
+                } else {
+                    innerBool.should(QueryBuilders.termQuery(Constants.IndexSchema.LABELS, labelFilterString(field, value)));
+                }
+            }
+            innerBool.minimumShouldMatch(1);
+            return innerBool;
+        }
+    }
+
+    private boolean containsWildcard(String value) {
+        for (int i = 0, len = value.length(); i < len; i++) {
+            char c = value.charAt(i);
+            if (c == MULTI_CHAR_WILDCARD || c == SINGLE_CHAR_WILDCARD) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String labelFilterString(String label, String filter) {
+        return label + LabelConstants.LABEL_DELIMITER + filter;
+    }
+
+    private String getTerminalReference(ComponentHolder queryComponentHolder) {
+        // If there is at least one pipeline stage, the last one is guaranteed to be the final aggregation stage
+        if (!queryComponentHolder.getPipelineAggregationBuilders().isEmpty()) {
+            return queryComponentHolder.getPipelineAggregationBuilders().getLast().getName();
+        }
+
+        // Otherwise, return the unfold aggregation reference
+        return queryComponentHolder.getId() + AggregationConstants.BUCKETS_PATH_SEPARATOR + queryComponentHolder
+            .getUnfoldAggregationBuilder()
+            .getName();
+    }
+
+    private TimeRange getAdjustedFetchTimeRange() {
+        long adjustedStart = params.startTime() - context.getTimeShift() - context.getTimeBuffer();
+        long adjustedEnd = params.endTime() - context.getTimeShift();
+        return new TimeRange(adjustedStart, adjustedEnd);
+    }
+
+    private record TimeRange(long start, long end) {
+    }
+
+    private long getDurationAsLong(Duration duration) {
+        switch (params.timeUnit()) {
+            case MILLISECONDS:
+                return duration.toMillis();
+            case SECONDS:
+                return duration.getSeconds();
+            default:
+                throw new IllegalArgumentException("Unsupported time unit: " + params.timeUnit().name());
+        }
+    }
+
+    /**
+     * Holds the components needed to construct a query or sub-query. This is used to collect opensearch aggregations while
+     * traversing the M3QL plan, and allows us to defer construction the final query to ensure components are used in the
+     * optimal place. For example, we defer creating a parent QueryBuilder until we've visited the children as the query may or may not
+     * be needed in a filter aggregation depending on the plan structure.
+     */
+    public static class ComponentHolder {
+        private final int id;
+        private final List<FilterAggregationBuilder> filterAggregationBuilders;
+        private final List<TimeSeriesCoordinatorAggregationBuilder> pipelineAggregationBuilders;
+        private TimeSeriesUnfoldAggregationBuilder unfoldAggregationBuilder;
+        private QueryBuilder query;
+
+        public ComponentHolder(int id) {
+            this.id = id;
+            this.filterAggregationBuilders = new ArrayList<>();
+            this.pipelineAggregationBuilders = new ArrayList<>();
+        }
+
+        public void setQuery(QueryBuilder query) {
+            this.query = query;
+        }
+
+        public QueryBuilder getQuery() {
+            return query;
+        }
+
+        public int getId() {
+            return id;
+        }
+
+        private static ComponentHolder merge(int id, ComponentHolder... holders) {
+            assert holders.length >= 2 : "should only merge multiple ComponentHolders";
+
+            ComponentHolder merged = new ComponentHolder(id);
+            List<QueryBuilder> filteredQueries = new ArrayList<>();
+
+            // Collect filtered aggregations (per unfolds)
+            for (ComponentHolder holder : holders) {
+                // Add an existing, or build a new FilterAggregationBuilder for each QueryComponentHolder
+                if (!holder.getFilterAggregationBuilders().isEmpty()) {
+                    for (FilterAggregationBuilder existing : holder.getFilterAggregationBuilders()) {
+                        merged.addFilterAggregationBuilder(existing); // lift the existing FilterAggregationBuilder
+                        filteredQueries.add(existing.getFilter()); // collect the existing Filter, to merge later
+                    }
+                } else {
+                    FilterAggregationBuilder filterAgg = new FilterAggregationBuilder(String.valueOf(holder.getId()), holder.getQuery());
+                    filterAgg.subAggregation(holder.getUnfoldAggregationBuilder());
+                    merged.addFilterAggregationBuilder(filterAgg);
+                    filteredQueries.add(holder.getQuery());
+                }
+
+                // Lift all PipelineAggregationBuilders if present
+                for (TimeSeriesCoordinatorAggregationBuilder existing : holder.getPipelineAggregationBuilders()) {
+                    // Lifting a pipeline agg change the scope, and the existing reference must be updated
+                    Map<String, String> references = existing.getReferences()
+                        .entrySet()
+                        .stream()
+                        .collect(
+                            Collectors.toMap(
+                                Map.Entry::getKey,
+                                e -> e.getValue().equals(holder.getId() + UNFOLD_NAME_SUFFIX)
+                                    ? holder.getId() + AggregationConstants.BUCKETS_PATH_SEPARATOR + holder.getUnfoldAggregationBuilder()
+                                        .getName()
+                                    : e.getValue()
+                            )
+                        );
+
+                    TimeSeriesCoordinatorAggregationBuilder lifted = new TimeSeriesCoordinatorAggregationBuilder(
+                        existing.getName(),
+                        existing.getStages(),
+                        EMPTY_MAP,
+                        references,
+                        existing.getInputReference()
+                    );
+
+                    merged.addPipelineAggregationBuilder(lifted);
+                }
+            }
+
+            merged.setQuery(getMergedQuery(filteredQueries));
+            return merged;
+        }
+
+        // TODO: explore flattening the merged queries to avoid executing repeated clauses multiple times,
+        // TODO: explore using matchAll (with filtered aggs doing post-filtering)
+        private static QueryBuilder getMergedQuery(List<QueryBuilder> queries) {
+            BoolQueryBuilder mergedQuery = QueryBuilders.boolQuery();
+            for (QueryBuilder qb : queries) {
+                mergedQuery.should(qb);
+            }
+            mergedQuery.minimumShouldMatch(1);
+            return mergedQuery;
+        }
+
+        private void addFilterAggregationBuilder(FilterAggregationBuilder filterAggregationBuilder) {
+            filterAggregationBuilders.add(filterAggregationBuilder);
+        }
+
+        private void addPipelineAggregationBuilder(TimeSeriesCoordinatorAggregationBuilder pipelineAggregationBuilder) {
+            pipelineAggregationBuilders.add(pipelineAggregationBuilder);
+        }
+
+        private List<FilterAggregationBuilder> getFilterAggregationBuilders() {
+            return filterAggregationBuilders;
+        }
+
+        private List<TimeSeriesCoordinatorAggregationBuilder> getPipelineAggregationBuilders() {
+            return pipelineAggregationBuilders;
+        }
+
+        private TimeSeriesUnfoldAggregationBuilder getUnfoldAggregationBuilder() {
+            return unfoldAggregationBuilder;
+        }
+
+        private void setUnfoldAggregationBuilder(TimeSeriesUnfoldAggregationBuilder unfoldAggregationBuilder) {
+            this.unfoldAggregationBuilder = unfoldAggregationBuilder;
+        }
+
+        public SearchSourceBuilder toSearchSourceBuilder() {
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+            searchSourceBuilder.size(0);
+            searchSourceBuilder.query(query);
+
+            if (unfoldAggregationBuilder != null) {
+                searchSourceBuilder.aggregation(unfoldAggregationBuilder);
+            }
+            for (FilterAggregationBuilder filterAgg : filterAggregationBuilders) {
+                searchSourceBuilder.aggregation(filterAgg);
+            }
+
+            // TODO: Leverage TimeSeriesCoordinatorAggregationBuilder's macro functionality to merge multiple pipeline aggs into one
+            for (PipelineAggregationBuilder pipelineAgg : pipelineAggregationBuilders) {
+                searchSourceBuilder.aggregation(pipelineAgg);
+            }
+            return searchSourceBuilder;
+        }
+    }
+}

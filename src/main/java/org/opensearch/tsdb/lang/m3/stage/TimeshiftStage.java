@@ -72,6 +72,7 @@ public class TimeshiftStage extends AbstractMapperStage {
 
     /**
      * Constructs a new TimeshiftStage with the specified shift amount in milliseconds.
+     * FIXME: remove milliseconds refs and update the serialized representation for consistency with other stages
      *
      * @param shiftMillis the amount to shift timestamps by in milliseconds (can be positive or negative)
      * @throws IllegalArgumentException if the shift amount is too large (Long.MIN_VALUE)

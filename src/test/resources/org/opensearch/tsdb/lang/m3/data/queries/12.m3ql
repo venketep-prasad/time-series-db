@@ -1,0 +1,4 @@
+# test binary function after unary function (asPercent after removeEmpty)
+fetch name:a
+  | removeEmpty
+  | asPercent(fetch name:b)

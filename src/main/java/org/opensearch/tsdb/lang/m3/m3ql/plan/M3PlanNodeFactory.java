@@ -60,6 +60,11 @@ public class M3PlanNodeFactory {
             case Constants.Functions.KEEP_LAST_VALUE:
                 return KeepLastValuePlanNode.of(functionNode);
             case Constants.Functions.MOVING:
+            case Constants.Functions.MOVING_AVERAGE:
+            case Constants.Functions.MOVING_MAX:
+            case Constants.Functions.MOVING_MEDIAN:
+            case Constants.Functions.MOVING_MIN:
+            case Constants.Functions.MOVING_SUM:
                 return MovingPlanNode.of(functionNode);
             case Constants.Functions.PER_SECOND:
                 return PerSecondPlanNode.of(functionNode);

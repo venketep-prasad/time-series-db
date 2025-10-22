@@ -1,7 +1,0 @@
-# test binary function after unary function
-# This tests the case where we have: fetch a | removeEmpty | asPercent(fetch b)
-# This verifies that dangling nodes are properly handled when a binary function
-# follows a unary function in the pipeline
-fetch name:a
-  | removeEmpty
-  | asPercent(fetch name:b)

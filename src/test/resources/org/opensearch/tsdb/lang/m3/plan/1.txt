@@ -1,6 +1,0 @@
-MOVING(3h, SUM)
-  ALIAS(my     # alias)
-    MOVING(1m, SUM)
-      TRANSFORM_NULL(0.0)
-        AGG(SUM, groupBy=[merchantID])
-          FETCH({city_name=[San Francisco], host=[host1, host2]}, !{})

@@ -1,3 +1,0 @@
-HISTOGRAM_PERCENTILE(bucketid, bucket, [99.0])
-  AGG(SUM, groupBy=[bucketid, bucket])
-    FETCH({service=[api-server], name=[total_leaf_node_latency_histogram]}, !{})

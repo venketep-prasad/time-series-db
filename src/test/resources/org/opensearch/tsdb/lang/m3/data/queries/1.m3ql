@@ -6,4 +6,5 @@ fetch city_name:"San Francisco" host:{"host1", "host2"}
   | moving 1m sum
   | alias "my     # alias" # comment after alias with spaces and #
   | moving 3h sum  # function after alias, to validate parser mode transition
+  | keepLastValue 2h
 # comment at the end

@@ -69,10 +69,10 @@ public class KeepLastValueStage implements UnaryPipelineStage {
 
     /**
      * Constructor for keepLastValue with interval limit.
-     * @param lookBackWindowMs maximum time in milliseconds to look back for non-null values
+     * @param lookBackWindow maximum time window to look back for non-null values
      */
-    public KeepLastValueStage(Long lookBackWindowMs) {
-        this.lookBackWindow = lookBackWindowMs;
+    public KeepLastValueStage(Long lookBackWindow) {
+        this.lookBackWindow = lookBackWindow;
     }
 
     @Override
@@ -193,7 +193,7 @@ public class KeepLastValueStage implements UnaryPipelineStage {
      * @return a new KeepLastValueStage instance with the parsed interval
      */
     public static KeepLastValueStage fromXContent(XContentParser parser) throws IOException {
-        Long lookBackWindowMs = null;
+        Long lookBackWindow = null;
         String currentFieldName = null;
         XContentParser.Token token;
 
@@ -202,12 +202,12 @@ public class KeepLastValueStage implements UnaryPipelineStage {
                 currentFieldName = parser.currentName();
             } else if (token == XContentParser.Token.VALUE_NUMBER) {
                 if (LOOK_BACK_WINDOW.equals(currentFieldName)) {
-                    lookBackWindowMs = parser.longValue();
+                    lookBackWindow = parser.longValue();
                 }
             }
         }
 
-        return new KeepLastValueStage(lookBackWindowMs);
+        return new KeepLastValueStage(lookBackWindow);
     }
 
     /**
@@ -222,20 +222,20 @@ public class KeepLastValueStage implements UnaryPipelineStage {
             throw new IllegalArgumentException("Args cannot be null");
         }
         Object lookBackWindowObj = args.get(LOOK_BACK_WINDOW); // default is no interval limit
-        Long lookBackWindowMs = null;
+        Long lookBackWindow = null;
         if (lookBackWindowObj != null) {
             if (lookBackWindowObj instanceof Number num) {
-                lookBackWindowMs = num.longValue();
+                lookBackWindow = num.longValue();
             } else {
-                lookBackWindowMs = Long.parseLong(lookBackWindowObj.toString());
+                lookBackWindow = Long.parseLong(lookBackWindowObj.toString());
             }
         }
-        return new KeepLastValueStage(lookBackWindowMs);
+        return new KeepLastValueStage(lookBackWindow);
     }
 
     /**
      * Get the look back window if specified.
-     * @return the look back window in milliseconds, or null if unlimited
+     * @return the look back window, or null if unlimited
      */
     public Long getLookBackWindow() {
         return lookBackWindow;

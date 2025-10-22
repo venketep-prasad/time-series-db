@@ -1,10 +1,10 @@
 ALIAS(percent)
   MOVING(5m, MIN)
     AS_PERCENT
-      AGG(MULTIPLY, groupBy=[])
+      AGG(SUM, groupBy=[])
         UNION
           ABS
-            DIFF
+            AS_PERCENT
               AGG(SUM, groupBy=[])
                 FETCH({service=[logger], name=[logs]}, !{})
               AGG(SUM, groupBy=[])
@@ -12,7 +12,7 @@ ALIAS(percent)
           MOVING(5m, AVG)
             TRANSFORM_NULL(0.0)
               ABS
-                DIVIDE_SERIES
+                AS_PERCENT
                   AGG(SUM, groupBy=[])
                     FETCH({service=[logger]}, !{error_type=[backoff]})
                   AGG(SUM, groupBy=[])

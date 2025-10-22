@@ -38,8 +38,8 @@ public class M3ASTConverterTests extends OpenSearchTestCase {
     @ParametersFactory
     public static Iterable<Object[]> parameters() {
         try {
-            NavigableMap<String, String> queries = TestUtils.getResourceFilesWithExtension("lang/m3/queries", ".m3ql");
-            NavigableMap<String, String> expectedResults = TestUtils.getResourceFilesWithExtension("lang/m3/plan", ".txt");
+            NavigableMap<String, String> queries = TestUtils.getResourceFilesWithExtension("lang/m3/data/queries", ".m3ql");
+            NavigableMap<String, String> expectedResults = TestUtils.getResourceFilesWithExtension("lang/m3/data/plan", ".txt");
 
             if (queries.size() != expectedResults.size()) {
                 throw new IllegalStateException("Number of query files does not match result files");

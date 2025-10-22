@@ -8,7 +8,7 @@ ROOT
           TAG_KEY(name)
             VALUE(logs)
         FUNCTION(sum)
-        FUNCTION(diff)
+        FUNCTION(asPercent)
           GROUP
             FUNCTION(fetch)
               TAG_KEY(service)
@@ -25,7 +25,7 @@ ROOT
             TAG_KEY(error_type)
               VALUE(backoff)
           FUNCTION(sum)
-          FUNCTION(divideSeries)
+          FUNCTION(asPercent)
             GROUP
               FUNCTION(fetch)
                 TAG_KEY(service)
@@ -39,7 +39,7 @@ ROOT
           FUNCTION(moving)
             VALUE(5m)
             VALUE(avg)
-      FUNCTION(multiplySeries)
+      FUNCTION(sumSeries)
     FUNCTION(asPercent)
       GROUP
         FUNCTION(fetch)

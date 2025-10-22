@@ -72,6 +72,31 @@ public class Constants {
         public static final String MOVING = "moving";
 
         /**
+         * movingAverage function name.
+         */
+        public static final String MOVING_AVERAGE = "movingAverage";
+
+        /**
+         * movingMax function name.
+         */
+        public static final String MOVING_MAX = "movingMax";
+
+        /**
+         * movingMedian function name.
+         */
+        public static final String MOVING_MEDIAN = "movingMedian";
+
+        /**
+         * movingMin function name.
+         */
+        public static final String MOVING_MIN = "movingMin";
+
+        /**
+         * movingSum function name.
+         */
+        public static final String MOVING_SUM = "movingSum";
+
+        /**
          * perSecond function name.
          */
         public static final String PER_SECOND = "perSecond";

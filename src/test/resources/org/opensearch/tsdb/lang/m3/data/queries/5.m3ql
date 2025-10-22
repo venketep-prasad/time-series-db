@@ -1,3 +1,3 @@
+# test global aggregation by using histogramPercentile without a preceding aggregation (e.g. sum)
 fetch service:"api-server" name:"total_leaf_node_latency_histogram"
-  | sum bucketid bucket
   | histogramPercentile bucketid bucket 99.0

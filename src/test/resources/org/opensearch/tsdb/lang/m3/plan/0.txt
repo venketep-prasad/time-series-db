@@ -1,8 +1,0 @@
-ALIAS({{.region}})
-  AGG(MAX, groupBy=[])
-    AGG(MIN, groupBy=[region])
-      AGG(AVG, groupBy=[])
-        AGG(SUM, groupBy=[region])
-          MOVING(1m, SUM)
-            TRANSFORM_NULL(0.0)
-              FETCH({name=[service.errors]}, !{})

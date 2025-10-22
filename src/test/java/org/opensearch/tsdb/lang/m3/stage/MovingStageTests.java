@@ -14,6 +14,7 @@ import org.opensearch.test.AbstractWireSerializingTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.lang.m3.common.WindowAggregationType;
 import org.opensearch.tsdb.query.aggregator.TimeSeries;
 import org.opensearch.tsdb.query.stage.PipelineStage;
 import org.opensearch.tsdb.query.stage.PipelineStageFactory;
@@ -33,7 +34,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Window size = 30ms (3 data points with step=10ms).
      */
     public void testMovingSum() {
-        MovingStage stage = new MovingStage(30L, "sum");
+        MovingStage stage = new MovingStage(30L, WindowAggregationType.SUM);
 
         // Dense series: all data points present [1,2,3,4,5,6,7] at [0,10,20,30,40,50,60]
         List<Sample> denseSamples = List.of(
@@ -102,7 +103,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test moving average with dense, sparse, and empty time series.
      */
     public void testMovingAvg() {
-        MovingStage stage = new MovingStage(30L, "avg");
+        MovingStage stage = new MovingStage(30L, WindowAggregationType.AVG);
 
         // Dense series: [10,20,30,40,50,60,70]
         List<Sample> denseSamples = List.of(
@@ -171,7 +172,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test moving min with dense, sparse, and empty time series.
      */
     public void testMovingMin() {
-        MovingStage stage = new MovingStage(30L, "min");
+        MovingStage stage = new MovingStage(30L, WindowAggregationType.MIN);
 
         // Dense series: [9,3,7,1,8,2,5]
         List<Sample> denseSamples = List.of(
@@ -240,7 +241,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test moving max with dense, sparse, and empty time series.
      */
     public void testMovingMax() {
-        MovingStage stage = new MovingStage(30L, "max");
+        MovingStage stage = new MovingStage(30L, WindowAggregationType.MAX);
 
         // Dense series: [1,8,2,9,3,7,4]
         List<Sample> denseSamples = List.of(
@@ -309,7 +310,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test moving median with dense, sparse, and empty time series.
      */
     public void testMovingMedian() {
-        MovingStage stage = new MovingStage(30L, "median");
+        MovingStage stage = new MovingStage(30L, WindowAggregationType.MEDIAN);
 
         // Dense series: [1,9,3,7,5,2,8]
         List<Sample> denseSamples = List.of(
@@ -378,7 +379,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test window size validation - should throw when window < step.
      */
     public void testWindowSizeTooSmall() {
-        MovingStage stage = new MovingStage(5L, "sum");
+        MovingStage stage = new MovingStage(5L, WindowAggregationType.SUM);
 
         List<Sample> samples = List.of(new FloatSample(10L, 1.0), new FloatSample(20L, 2.0));
         ByteLabels labels = ByteLabels.fromStrings("name", "metric1");
@@ -392,7 +393,7 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
      * Test XContent serialization.
      */
     public void testToXContent() throws IOException {
-        MovingStage stage = new MovingStage(300000L, "avg"); // 5 minutes in millis
+        MovingStage stage = new MovingStage(300000L, WindowAggregationType.AVG); // 5 minutes in millis
 
         try (XContentBuilder builder = XContentFactory.jsonBuilder()) {
             builder.startObject();
@@ -428,17 +429,6 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
     }
 
     /**
-     * Test factory creation with default function.
-     */
-    public void testFromArgsDefaultFunction() {
-        Map<String, Object> args = Map.of("interval", 30000L);
-
-        MovingStage stage = MovingStage.fromArgs(args);
-        assertNotNull(stage);
-        assertEquals("moving", stage.getName());
-    }
-
-    /**
      * Test factory creation without required parameter.
      */
     public void testFromArgsMissingParameter() {
@@ -456,6 +446,6 @@ public class MovingStageTests extends AbstractWireSerializingTestCase<MovingStag
     @Override
     protected MovingStage createTestInstance() {
         long intervalMillis = randomIntBetween(1, 60) * 60000L; // Random minutes in milliseconds
-        return new MovingStage(intervalMillis, randomFrom("sum", "avg", "min", "max", "median"));
+        return new MovingStage(intervalMillis, randomFrom(WindowAggregationType.values()));
     }
 }
