@@ -124,7 +124,7 @@ public class ByteLabels implements Labels {
         for (int i = 0; i < keyValuePairs.size(); i++) {
             String pair = keyValuePairs.get(i);
             int delimiterIndex = pair.indexOf(LabelConstants.LABEL_DELIMITER);
-            if (delimiterIndex <= 0 || delimiterIndex >= pair.length() - 1) {
+            if (delimiterIndex <= 0) {
                 throw new IllegalArgumentException("Invalid key value pair: " + pair);
             }
             splitPairs[i * 2] = pair.substring(0, delimiterIndex);

@@ -210,17 +210,19 @@ public class ByteLabelsTests extends OpenSearchTestCase {
             () -> ByteLabels.fromSortedKeyValuePairs(List.of(LabelConstants.LABEL_DELIMITER + "value"))
         );
 
-        // Delimiter at end
-        expectThrows(
-            IllegalArgumentException.class,
-            () -> ByteLabels.fromSortedKeyValuePairs(List.of("key" + LabelConstants.LABEL_DELIMITER))
-        );
-
         // Only delimiter
         expectThrows(
             IllegalArgumentException.class,
             () -> ByteLabels.fromSortedKeyValuePairs(List.of(String.valueOf(LabelConstants.LABEL_DELIMITER)))
         );
+    }
+
+    public void testFromSortedKeyValuePairsEmptyValue() {
+        Labels labels = ByteLabels.fromSortedKeyValuePairs(List.of("key" + LabelConstants.LABEL_DELIMITER));
+
+        assertTrue(labels.has("key"));
+        assertEquals(labels.get("key"), "");
+        assertEquals("key" + LabelConstants.LABEL_DELIMITER, labels.toKeyValueString());
     }
 
     public void testFromSortedKeyValuePairsConsistencyWithFromStrings() {
