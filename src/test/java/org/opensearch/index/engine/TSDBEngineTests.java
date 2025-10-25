@@ -545,4 +545,33 @@ public class TSDBEngineTests extends EngineTestCase {
             assertTrue("Segments file should be in the file list", fileNames.contains(segmentsFileName));
         }
     }
+
+    public void testIndexErrorHandlingPerDocument() throws IOException {
+        String validSample1 = createSampleJson(series1, 1712576200L, 1024.0);
+        String validSample2 = createSampleJson(series2, 1712576400L, 1026.0);
+        String validSample3 = createSampleJson(series2, 1712576800L, 1026.0);
+
+        // Create invalid sample with invalid labels that will cause RuntimeException
+        String invalidLabelsJson = "{\"labels\":\"key value key2\",\"timestamp\":1712576600,\"value\":100.0}";
+
+        // Test valid documents index successfully
+        Engine.IndexResult validResult1 = publishSample(0, validSample1);
+        assertTrue("Valid sample should be created", validResult1.isCreated());
+        assertNull("Valid sample should not have failure", validResult1.getFailure());
+
+        Engine.IndexResult validResult2 = publishSample(1, validSample2);
+        assertTrue("Valid sample should be created", validResult2.isCreated());
+        assertNull("Valid sample should not have failure", validResult2.getFailure());
+
+        // Test invalid document returns error without crashing
+        Engine.IndexResult invalidResult = publishSample(2, invalidLabelsJson);
+        assertFalse("Invalid sample should not be created", invalidResult.isCreated());
+        assertNotNull("Invalid sample should have failure", invalidResult.getFailure());
+        assertTrue("Failure should be RuntimeException", invalidResult.getFailure() instanceof RuntimeException);
+
+        // Verify that subsequent valid documents can still be indexed
+        Engine.IndexResult validResult3 = publishSample(3, validSample3);
+        assertTrue("Valid sample after error should be created", validResult3.isCreated());
+        assertNull("Valid sample after error should not have failure", validResult3.getFailure());
+    }
 }

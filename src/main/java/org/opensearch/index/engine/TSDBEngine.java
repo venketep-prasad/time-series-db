@@ -210,7 +210,12 @@ public class TSDBEngine extends Engine {
         }
 
         // parse indexing request source payload to build TSDBDocument
-        TSDBDocument metricDocument = TSDBDocument.fromParsedDocument(indexOp.parsedDoc());
+        TSDBDocument metricDocument;
+        try {
+            metricDocument = TSDBDocument.fromParsedDocument(indexOp.parsedDoc());
+        } catch (RuntimeException e) {
+            return new IndexResult(e, indexOp.version());
+        }
 
         // generate series reference as stable hash of labels if not provided
         long seriesReference = metricDocument.seriesReference() == null
@@ -242,6 +247,7 @@ public class TSDBEngine extends Engine {
             rewriteParsedDocumentSource(indexOp, seriesReference, metricDocument, isNewSeriesCreated);
             appender.append(() -> handlePostAppendCallback(indexOp, indexResult));
         } catch (InterruptedException | IOException e) {
+            // TODO: handle append failures correctly via IndexResult when applicable
             throw new RuntimeException(e);
         }
 

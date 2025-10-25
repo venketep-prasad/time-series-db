@@ -8,6 +8,9 @@
 package org.opensearch.index.engine;
 
 import org.opensearch.action.DocWriteResponse;
+import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
+import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.common.settings.Settings;
@@ -29,6 +32,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 import static org.opensearch.test.hamcrest.OpenSearchAssertions.assertHitCount;
 import static org.opensearch.test.hamcrest.OpenSearchAssertions.assertSearchResponse;
@@ -249,5 +253,76 @@ public class TSDBEngineSingleNodeTests extends OpenSearchSingleNodeTestCase {
 
             assertEquals("Samples for " + serverValue, expectedSamples, actualSamples);
         }
+    }
+
+    /**
+     * Test bulk index error handling functionality at the REST API level.
+     * Validates that the bulk API properly handles mixed valid/invalid documents,
+     * similar to the engine-level test testIndexErrorHandlingPerDocument.
+     */
+    public void testBulkIndexErrorHandlingPerDocument() throws IOException, ExecutionException, InterruptedException {
+        createMetricsIndex();
+
+        // Create bulk request with mix of valid and invalid documents
+        BulkRequest bulkRequest = new BulkRequest();
+
+        // Valid document 1
+        String validSample1 = createSampleJson("__name__ http_requests method GET status 200", 1712576200L, 1024.0);
+        bulkRequest.add(new IndexRequest(TEST_INDEX_NAME).id("1").source(validSample1, XContentType.JSON));
+
+        // Valid document 2
+        String validSample2 = createSampleJson("__name__ cpu_usage host server1", 1712576400L, 1026.0);
+        bulkRequest.add(new IndexRequest(TEST_INDEX_NAME).id("2").source(validSample2, XContentType.JSON));
+
+        // Invalid document - malformed labels that will cause RuntimeException (same as engine test)
+        String invalidLabelsJson = "{\"labels\":\"key value key2\",\"timestamp\":1712576600,\"value\":100.0}";
+        bulkRequest.add(new IndexRequest(TEST_INDEX_NAME).id("3").source(invalidLabelsJson, XContentType.JSON));
+
+        // Valid document 3 (after error)
+        String validSample3 = createSampleJson("__name__ cpu_usage host server1", 1712576800L, 1026.0);
+        bulkRequest.add(new IndexRequest(TEST_INDEX_NAME).id("4").source(validSample3, XContentType.JSON));
+
+        // Execute bulk request
+        BulkResponse bulkResponse = client().bulk(bulkRequest).get();
+
+        // Validate bulk response structure
+        assertTrue("Bulk response should have errors", bulkResponse.hasFailures());
+        assertEquals("Should have 4 items in response", 4, bulkResponse.getItems().length);
+
+        // Validate first document (valid) - should succeed
+        assertFalse("First document should not have failure", bulkResponse.getItems()[0].isFailed());
+        assertEquals(
+            "First document should be created",
+            DocWriteResponse.Result.CREATED,
+            bulkResponse.getItems()[0].getResponse().getResult()
+        );
+
+        // Validate second document (valid) - should succeed
+        assertFalse("Second document should not have failure", bulkResponse.getItems()[1].isFailed());
+        assertEquals(
+            "Second document should be created",
+            DocWriteResponse.Result.CREATED,
+            bulkResponse.getItems()[1].getResponse().getResult()
+        );
+
+        // Validate third document (invalid labels) - should fail
+        assertTrue("Third document should have failure", bulkResponse.getItems()[2].isFailed());
+        assertNotNull("Third document should have failure message", bulkResponse.getItems()[2].getFailureMessage());
+        assertTrue("Failure should mention RuntimeException", bulkResponse.getItems()[2].getFailureMessage().contains("RuntimeException"));
+
+        // Validate fourth document (valid, after error) - should succeed
+        assertFalse("Fourth document should not have failure", bulkResponse.getItems()[3].isFailed());
+        assertEquals(
+            "Fourth document should be created",
+            DocWriteResponse.Result.CREATED,
+            bulkResponse.getItems()[3].getResponse().getResult()
+        );
+
+        // Refresh and verify that valid documents were indexed
+        client().admin().indices().prepareRefresh(TEST_INDEX_NAME).get();
+        SearchResponse searchResponse = client().prepareSearch(TEST_INDEX_NAME).setQuery(new MatchAllQueryBuilder()).get();
+
+        // Should have 3 successful documents (2 different series with 1 and 2 samples respectively)
+        assertHitCount(searchResponse, 2);
     }
 }
