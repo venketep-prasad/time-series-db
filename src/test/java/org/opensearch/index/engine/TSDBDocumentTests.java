@@ -18,6 +18,7 @@ import org.opensearch.tsdb.core.mapping.Constants;
 import org.opensearch.tsdb.core.model.Labels;
 
 import java.io.IOException;
+import java.util.Map;
 
 public class TSDBDocumentTests extends OpenSearchTestCase {
 
@@ -445,5 +446,34 @@ public class TSDBDocumentTests extends OpenSearchTestCase {
             builder.endObject();
             return BytesReference.bytes(builder);
         }
+    }
+
+    /**
+     * Test that empty values (both in the middle and at the end) in labels string are preserved
+     * For example: "key1 value1 key2  key3 value3 key4 " (note double space after key2 and trailing space)
+     * should parse correctly with key2 and key4 having empty values
+     */
+    public void testFromParsedDocumentWithEmptyValues() throws IOException {
+        String labelsString = "key1 value1 key2  key3 value3 key4 ";
+        long timestamp = 1000L;
+        double value = 42.0;
+
+        BytesReference source = createJsonSourceWithoutReference(labelsString, timestamp, value);
+        ParsedDocument parsedDoc = new ParsedDocument(null, null, "test-id", null, null, source, XContentType.JSON, null);
+
+        TSDBDocument doc = TSDBDocument.fromParsedDocument(parsedDoc);
+
+        assertNotNull("Document should not be null", doc);
+        assertNotNull("Labels should not be null", doc.labels());
+        assertEquals("Timestamp should match", timestamp, doc.timestamp());
+        assertEquals("Value should match", value, doc.value(), 0.0001);
+
+        // Verify labels were parsed correctly with empty values
+        Map<String, String> labelsMap = doc.labels().toMapView();
+        assertEquals("Should have 4 labels", 4, labelsMap.size());
+        assertEquals("key1 should have value1", "value1", labelsMap.get("key1"));
+        assertEquals("key2 should have empty value", "", labelsMap.get("key2"));
+        assertEquals("key3 should have value3", "value3", labelsMap.get("key3"));
+        assertEquals("key4 should have empty value", "", labelsMap.get("key4"));
     }
 }

@@ -60,7 +60,9 @@ public record TSDBDocument(@Nullable Labels labels, long timestamp, double value
             String rawLabelsString = (String) args[0];
             Labels labels = null;
             if (rawLabelsString != null && rawLabelsString.isEmpty() == false) {
-                labels = ByteLabels.fromStrings(rawLabelsString.split(LABELS_SEPARATOR));
+                // Use negative limit to preserve trailing empty strings on splitting labels string
+                // e.g., "k1 v1 k2 " will split to ["k1", "v1", "k2", ""]
+                labels = ByteLabels.fromStrings(rawLabelsString.split(LABELS_SEPARATOR, -1));
             }
             long timestamp = (Long) args[1];
             double value = (Double) args[2];
