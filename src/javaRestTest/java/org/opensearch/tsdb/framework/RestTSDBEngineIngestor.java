@@ -7,13 +7,16 @@
  */
 package org.opensearch.tsdb.framework;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.opensearch.client.Request;
 import org.opensearch.client.Response;
 import org.opensearch.client.ResponseException;
 import org.opensearch.client.RestClient;
+import org.opensearch.index.mapper.IndexFieldMapper;
 import org.opensearch.rest.RestRequest;
+import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.framework.models.TestCase;
 import org.opensearch.tsdb.framework.models.TimeSeriesSample;
 import org.opensearch.tsdb.utils.TSDBTestUtils;
@@ -48,6 +51,11 @@ import static org.opensearch.tsdb.framework.Common.HTTP_OK;
 public record RestTSDBEngineIngestor(RestClient restClient) {
 
     private static final int DEFAULT_BULK_SIZE = 500;
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+    // OpenSearch bulk API constants
+    private static final String BULK_ACTION_INDEX = "index";
+    private static final String BULK_FIELD_ROUTING = "routing";
 
     /**
      * Ingest time series data from the test case into the specified index.
@@ -97,8 +105,16 @@ public record RestTSDBEngineIngestor(RestClient restClient) {
         StringBuilder bulkBody = new StringBuilder();
 
         for (TimeSeriesSample sample : batch) {
-            // Add bulk index action
-            bulkBody.append("{\"index\":{\"_index\":\"").append(indexName).append("\"}}\n");
+            // Calculate routing key from labels to ensure all samples of the same series go to the same shard
+            String seriesId = String.valueOf(ByteLabels.fromMap(sample.labels()).stableHash());
+
+            // Add bulk index action with routing using ObjectMapper for proper JSON escaping
+            Map<String, Object> indexAction = Map.of(
+                BULK_ACTION_INDEX,
+                Map.of(IndexFieldMapper.NAME, indexName, BULK_FIELD_ROUTING, seriesId)
+            );
+
+            bulkBody.append(JSON_MAPPER.writeValueAsString(indexAction)).append("\n");
 
             // Add document
             String document = buildDocumentJson(sample);
