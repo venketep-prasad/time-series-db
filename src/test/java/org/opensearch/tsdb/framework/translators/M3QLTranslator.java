@@ -40,7 +40,7 @@ public class M3QLTranslator implements QueryConfigTranslator {
         boolean pushdown = !queryConfig.isDisablePushdown();
 
         // Create M3OSTranslator parameters
-        M3OSTranslator.Params params = new M3OSTranslator.Params(minTime.toEpochMilli(), maxTime.toEpochMilli(), step, pushdown);
+        M3OSTranslator.Params params = new M3OSTranslator.Params(minTime.toEpochMilli(), maxTime.toEpochMilli(), step, pushdown, false);
 
         // Translate M3QL query string to SearchSourceBuilder
         SearchSourceBuilder searchSource = M3OSTranslator.translate(queryString, params);
