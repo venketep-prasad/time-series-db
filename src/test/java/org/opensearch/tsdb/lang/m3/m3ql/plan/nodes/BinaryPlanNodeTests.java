@@ -40,10 +40,11 @@ public class BinaryPlanNodeTests extends BasePlanNodeTests {
     }
 
     public void testBinaryPlanNodeTypes() {
-        assertEquals(3, BinaryPlanNode.Type.values().length);
+        assertEquals(4, BinaryPlanNode.Type.values().length);
         assertNotNull(BinaryPlanNode.Type.AS_PERCENT);
         assertNotNull(BinaryPlanNode.Type.DIFF);
         assertNotNull(BinaryPlanNode.Type.DIVIDE_SERIES);
+        assertNotNull(BinaryPlanNode.Type.FALLBACK_SERIES);
     }
 
     private static class TestMockVisitor extends M3PlanVisitor<String> {

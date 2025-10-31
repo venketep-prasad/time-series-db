@@ -12,6 +12,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.RoundPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ValueFilterPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
@@ -92,6 +93,15 @@ public abstract class M3PlanVisitor<T> {
      * @return the result of processing the BinaryPlanNode
      */
     public T visit(BinaryPlanNode planNode) {
+        return process(planNode);
+    }
+
+    /**
+     * Visit method for FallbackSeriesConstantPlanNode.
+     * @param planNode the FallbackSeriesConstantPlanNode to visit
+     * @return the result of processing the FallbackSeriesConstantPlanNode
+     */
+    public T visit(FallbackSeriesConstantPlanNode planNode) {
         return process(planNode);
     }
 

@@ -13,8 +13,10 @@ import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasStage;
 import org.opensearch.tsdb.lang.m3.stage.AsPercentStage;
 import org.opensearch.tsdb.lang.m3.stage.AvgStage;
+import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesBinaryStage;
 import org.opensearch.tsdb.lang.m3.stage.CountStage;
 import org.opensearch.tsdb.lang.m3.stage.DivideStage;
+import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesUnaryStage;
 import org.opensearch.tsdb.lang.m3.stage.HistogramPercentileStage;
 import org.opensearch.tsdb.lang.m3.stage.IsNonNullStage;
 import org.opensearch.tsdb.lang.m3.stage.KeepLastValueStage;
@@ -100,12 +102,14 @@ public class PipelineStageFactory {
             // this would use classpath scanning to find all annotated classes.
             // Registering in alphabetical order for consistency
             registerStage(AbsStage.class);
-            registerStage(AliasStage.class);
             registerStage(AliasByTagsStage.class);
+            registerStage(AliasStage.class);
             registerStage(AsPercentStage.class);
             registerStage(AvgStage.class);
             registerStage(CountStage.class);
             registerStage(DivideStage.class);
+            registerStage(FallbackSeriesBinaryStage.class);
+            registerStage(FallbackSeriesUnaryStage.class);
             registerStage(HistogramPercentileStage.class);
             registerStage(IsNonNullStage.class);
             registerStage(KeepLastValueStage.class);

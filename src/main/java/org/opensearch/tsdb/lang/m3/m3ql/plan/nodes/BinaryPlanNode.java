@@ -51,18 +51,23 @@ public class BinaryPlanNode extends M3PlanNode {
      */
     public enum Type {
         /**
-         * Add the values of two series.
+         * Calculate percentage of left series relative to right series.
          */
         AS_PERCENT,
 
         /**
-         * Add the values of two series.
+         * Calculate difference between left and right series.
          */
         DIFF,
 
         /**
-         * Divide the values of two series.
+         * Divide the values of left series by right series.
          */
-        DIVIDE_SERIES;
+        DIVIDE_SERIES,
+
+        /**
+         * Return left series if non-empty, otherwise return right series (fallback).
+         */
+        FALLBACK_SERIES;
     }
 }

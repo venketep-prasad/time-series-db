@@ -22,6 +22,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.HistogramPercentilePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.IsNonNullPlanNode;
@@ -656,6 +657,39 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
             String json = xContentBuilder.toString();
             assertEquals("2h should be represented in seconds", "{\"interval\":120,\"function\":\"avg\"}", json);
         }
+    }
+
+    /**
+     * Test FallbackSeriesConstantPlanNode with correct number of children (1).
+     */
+    public void testFallbackSeriesConstantPlanNodeWithOneChild() {
+        FallbackSeriesConstantPlanNode planNode = new FallbackSeriesConstantPlanNode(1, 42.0);
+        planNode.addChild(createMockFetchNode(2));
+
+        // Should not throw an exception
+        assertNotNull(visitor.visit(planNode));
+    }
+
+    /**
+     * Test FallbackSeriesConstantPlanNode with incorrect number of children (0).
+     */
+    public void testFallbackSeriesConstantPlanNodeWithNoChildren() {
+        FallbackSeriesConstantPlanNode planNode = new FallbackSeriesConstantPlanNode(1, 42.0);
+
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
+        assertEquals("FallbackSeriesConstantPlanNode must have exactly one child", exception.getMessage());
+    }
+
+    /**
+     * Test BinaryPlanNode with FALLBACK_SERIES type.
+     */
+    public void testBinaryPlanNodeWithFallbackSeriesType() {
+        BinaryPlanNode planNode = new BinaryPlanNode(1, BinaryPlanNode.Type.FALLBACK_SERIES);
+        planNode.addChild(createMockFetchNode(2));
+        planNode.addChild(createMockFetchNode(3));
+
+        // Should not throw an exception
+        assertNotNull(visitor.visit(planNode));
     }
 
     /**

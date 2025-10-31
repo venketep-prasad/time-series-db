@@ -21,6 +21,8 @@ import org.opensearch.tsdb.lang.m3.stage.AbsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasStage;
 import org.opensearch.tsdb.lang.m3.stage.AsPercentStage;
+import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesBinaryStage;
+import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesUnaryStage;
 import org.opensearch.tsdb.lang.m3.stage.AvgStage;
 import org.opensearch.tsdb.lang.m3.stage.CountStage;
 import org.opensearch.tsdb.lang.m3.stage.DivideStage;
@@ -44,6 +46,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.HistogramPercentilePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.KeepLastValuePlanNode;
@@ -261,6 +264,23 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
         }
 
         return holder;
+    }
+
+    @Override
+    public ComponentHolder visit(FallbackSeriesConstantPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+
+        // Create FallbackSeriesUnaryStage with query metadata (time range and step)
+        TimeRange timeRange = getAdjustedFetchTimeRange();
+        FallbackSeriesUnaryStage fallbackStage = new FallbackSeriesUnaryStage(
+            planNode.getConstantValue(),
+            timeRange.start(),
+            timeRange.end(),
+            params.step()
+        );
+        stageStack.add(fallbackStage);
+
+        return planNode.getChildren().getFirst().accept(this);
     }
 
     @Override
@@ -502,6 +522,7 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
                 // TODO: return DiffStage once implemented
                 case DIFF -> throw new UnsupportedOperationException("diff not yet implemented");
                 case DIVIDE_SERIES -> new DivideStage(rhsReferenceName);
+                case FALLBACK_SERIES -> new FallbackSeriesBinaryStage(rhsReferenceName);
             };
         }
         if (planNode instanceof UnionPlanNode) {

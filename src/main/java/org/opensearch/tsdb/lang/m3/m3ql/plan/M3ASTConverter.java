@@ -97,6 +97,12 @@ public class M3ASTConverter {
                 } else {
                     resultPlanNode = mergeChainsAtBoundaryMarker(resultPlanNode, newChain);
                 }
+            } else if (isFallbackSeriesWithPipelineArg(childNode)) {
+                // Handle fallbackSeries with pipeline argument as binary operation
+                assert resultPlanNode != null : "resultPlanNode should not be null when handling fallbackSeries with pipeline arg";
+                resultPlanNode = finalizePlanNode(resultPlanNode, danglingPlanNode);
+                danglingPlanNode = null;
+                resultPlanNode = handleFallbackSeriesWithPipelineArg(resultPlanNode, (FunctionNode) childNode);
             } else if (isFunctionNodeWithPipelineArg(childNode)) {
                 assert resultPlanNode != null : "resultPlanNode should not be null when handling function with pipeline arg";
                 resultPlanNode = finalizePlanNode(resultPlanNode, danglingPlanNode);
@@ -194,6 +200,45 @@ public class M3ASTConverter {
         } else {
             return UnionPlanNode.of(resultPlanNode, newChain);
         }
+    }
+
+    // True if the node is a fallbackSeries function with a pipeline/group argument
+    private boolean isFallbackSeriesWithPipelineArg(M3ASTNode node) {
+        if (!(node instanceof FunctionNode functionNode)) {
+            return false;
+        }
+
+        if (!Constants.Functions.FALLBACK_SERIES.equals(functionNode.getFunctionName())) {
+            return false;
+        }
+
+        // Check if it has an argument and if that argument is a pipeline or group
+        if (functionNode.getChildren().isEmpty()) {
+            return false; // No argument - will fail validation later
+        }
+
+        M3ASTNode firstArg = functionNode.getChildren().getFirst();
+        return isPipelineOrGroup(firstArg); // Returns true if it's a pipeline/group
+    }
+
+    // Handles a fallbackSeries function with a pipeline argument by creating a BinaryPlanNode
+    private M3PlanNode handleFallbackSeriesWithPipelineArg(M3PlanNode lhs, FunctionNode functionNode) {
+        if (functionNode.getChildren().isEmpty()) {
+            throw new IllegalArgumentException("fallbackSeries requires one argument");
+        }
+
+        M3ASTNode child = functionNode.getChildren().getFirst();
+        if (!isPipelineOrGroup(child)) {
+            throw new IllegalStateException(
+                "Expected pipeline/group argument for fallbackSeries, got: " + child.getClass().getSimpleName()
+            );
+        }
+
+        M3PlanNode rhs = handlePipelineOrGroupNode(child);
+        BinaryPlanNode binaryPlanNode = new BinaryPlanNode(M3PlannerContext.generateId(), BinaryPlanNode.Type.FALLBACK_SERIES);
+        binaryPlanNode.addChild(lhs);
+        binaryPlanNode.addChild(rhs);
+        return binaryPlanNode;
     }
 
     // True if M3ASTNode is a function node that takes a pipeline as an argument
