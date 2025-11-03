@@ -23,6 +23,13 @@ import java.util.Locale;
  */
 public class SummarizePlanNode extends M3PlanNode {
 
+    /**
+     * Go's zero time (0001-01-01 00:00:00 UTC) in milliseconds from Unix epoch.
+     * This aligns with Go's time.Time{} for compatibility with M3's time.Truncate() behavior.
+     * Used as the default reference time for bucket alignment in M3QL when alignToFrom is false.
+     */
+    public static final long GO_ZERO_TIME_MILLIS = -62135596800000L;
+
     private final String interval; // e.g., "5m", "1h"
     private final WindowAggregationType function;
     private final boolean alignToFrom;
@@ -81,10 +88,13 @@ public class SummarizePlanNode extends M3PlanNode {
 
     /**
      * Factory method to create a SummarizePlanNode from a FunctionNode.
-     * Expects the function node to represent a SUMMARIZE function with 2-3 arguments:
+     * Expects the function node to represent a SUMMARIZE function with 1-3 arguments:
      * - interval (required): bucket size
-     * - function (required): aggregation function
-     * - alignToFrom (optional): boolean, defaults to false
+     * - function (optional): aggregation function, defaults to "sum" (M3QL default)
+     * - alignToFrom (optional): boolean, defaults to false (M3QL default)
+     *
+     * Note: Default values are set at the M3QL planner level. The SummarizeStage itself
+     * requires all parameters to be explicitly specified.
      *
      * @param functionNode the function node representing the SUMMARIZE function
      * @return a new SummarizePlanNode instance
@@ -93,9 +103,9 @@ public class SummarizePlanNode extends M3PlanNode {
     public static SummarizePlanNode of(FunctionNode functionNode) {
         int argCount = functionNode.getChildren().size();
 
-        if (argCount < 2 || argCount > 3) {
+        if (argCount < 1 || argCount > 3) {
             throw new IllegalArgumentException(
-                "Summarize function must have 2-3 arguments: interval, function, [alignToFrom]. Got: " + argCount
+                "Summarize function must have 1-3 arguments: interval, [function], [alignToFrom]. Got: " + argCount
             );
         }
 
@@ -105,12 +115,15 @@ public class SummarizePlanNode extends M3PlanNode {
         }
         String interval = intervalNode.getValue();
 
-        // Parse function (second argument)
-        if (!(functionNode.getChildren().get(1) instanceof ValueNode functionNode2)) {
-            throw new IllegalArgumentException("Second argument must be a value representing the aggregation function");
+        // Parse function (second argument, optional, defaults to "sum")
+        WindowAggregationType function = WindowAggregationType.SUM; // default
+        if (argCount >= 2) {
+            if (!(functionNode.getChildren().get(1) instanceof ValueNode functionNode2)) {
+                throw new IllegalArgumentException("Second argument must be a value representing the aggregation function");
+            }
+            String functionStr = functionNode2.getValue();
+            function = WindowAggregationType.fromString(functionStr);
         }
-        String functionStr = functionNode2.getValue();
-        WindowAggregationType function = WindowAggregationType.fromString(functionStr);
 
         // Parse alignToFrom (third argument, optional, defaults to false)
         boolean alignToFrom = false;

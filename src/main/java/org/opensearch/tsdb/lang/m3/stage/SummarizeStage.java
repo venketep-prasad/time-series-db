@@ -43,17 +43,17 @@ import java.util.function.Supplier;
  *
  * <h2>Parameters:</h2>
  * <ul>
- *   <li><strong>interval:</strong> Duration of each bucket in the same time unit as sample timestamps</li>
- *   <li><strong>function:</strong> Aggregation function (sum, avg, max, min, last, stddev, p0-p100) - required</li>
- *   <li><strong>alignToFrom:</strong> If true, align buckets to query start time; if false, round to interval boundaries</li>
+ *   <li><strong>interval:</strong> Duration of each bucket in the same time unit as sample timestamps (required)</li>
+ *   <li><strong>function:</strong> Aggregation function (sum, avg, max, min, last, stddev, p0-p100) (required)</li>
+ *   <li><strong>alignToFrom:</strong> If true, align to series start time; if false, use referenceTimeConstant (required)</li>
+ *   <li><strong>referenceTimeConstant:</strong> Reference time for fixed bucket alignment when alignToFrom is false (required)</li>
  * </ul>
  *
  * <h2>Alignment Behavior:</h2>
+ * <p>Buckets are aligned based on the alignToFrom parameter:</p>
  * <ul>
- *   <li><strong>alignToFrom=false (default):</strong> Buckets align to interval boundaries.
- *       Example: With 1-hour interval, 22:32 falls in bucket 22:00-23:00</li>
- *   <li><strong>alignToFrom=true:</strong> Buckets start from query start time.
- *       Example: If query starts at 6:30, 22:32 falls in bucket 22:30-23:30</li>
+ *   <li>If alignToFrom is true, buckets align from series start time</li>
+ *   <li>If alignToFrom is false, buckets align to fixed intervals using referenceTimeConstant</li>
  * </ul>
  */
 @PipelineStageAnnotation(name = "summarize")
@@ -68,19 +68,23 @@ public class SummarizeStage implements UnaryPipelineStage {
     /** Aggregation function type. */
     private final WindowAggregationType function;
 
-    /** Whether to align buckets to query start time. */
+    /** Whether to align buckets to series start time. */
     private final boolean alignToFrom;
+
+    /** Reference time constant for fixed bucket alignment when alignToFrom is false. */
+    private long referenceTimeConstant;
 
     /** Factory to create new BucketSummarizer instances for this function. */
     private final Supplier<BucketSummarizer> summarizerFactory;
 
     /**
-     * Full constructor with all parameters.
+     * Constructor with core parameters.
      * Creates the summarizer factory based on the WindowAggregationType.
+     * Use {@link #setReferenceTimeConstant(long)} to set the reference time for fixed alignment.
      *
      * @param interval bucket interval in the same time unit as sample timestamps
      * @param function aggregation function type
-     * @param alignToFrom whether to align buckets to query start time
+     * @param alignToFrom if true, align to series start time; if false, use referenceTimeConstant
      * @throws IllegalArgumentException if interval &lt;= 0 or function is null
      */
     public SummarizeStage(long interval, WindowAggregationType function, boolean alignToFrom) {
@@ -94,8 +98,21 @@ public class SummarizeStage implements UnaryPipelineStage {
         this.interval = interval;
         this.function = function;
         this.alignToFrom = alignToFrom;
+        this.referenceTimeConstant = 0L; // Default, should be set via setReferenceTimeConstant
         // Create the summarizer factory based on the function type
         this.summarizerFactory = createSummarizerFactory(function);
+    }
+
+    /**
+     * Sets the reference time constant for fixed bucket alignment.
+     * This is used when alignToFrom is false to determine the bucket alignment reference point.
+     *
+     * @param referenceTimeConstant the reference time in milliseconds
+     * @return this stage for method chaining
+     */
+    public SummarizeStage setReferenceTimeConstant(long referenceTimeConstant) {
+        this.referenceTimeConstant = referenceTimeConstant;
+        return this;
     }
 
     /**
@@ -128,6 +145,17 @@ public class SummarizeStage implements UnaryPipelineStage {
     @Override
     public boolean supportConcurrentSegmentSearch() {
         return false;
+    }
+
+    /**
+     * Computes the reference time for bucket alignment.
+     * If alignToFrom is true, uses series start time. Otherwise, uses the configured constant.
+     *
+     * @param seriesStartTime the series start timestamp
+     * @return the reference time to use for bucket alignment
+     */
+    private long computeReferenceTime(long seriesStartTime) {
+        return alignToFrom ? seriesStartTime : referenceTimeConstant;
     }
 
     @Override
@@ -167,10 +195,11 @@ public class SummarizeStage implements UnaryPipelineStage {
         long minTimestamp = series.getMinTimestamp();
         long maxTimestamp = series.getMaxTimestamp();
 
+        // Compute reference time for bucket alignment
+        long referenceTime = computeReferenceTime(minTimestamp);
+
         // Create bucket mapper for this time series
-        BucketMapper bucketMapper = alignToFrom
-            ? new BucketMapper(interval, minTimestamp)  // Align to series start time
-            : new BucketMapper(interval);                // Align to fixed reference
+        BucketMapper bucketMapper = new BucketMapper(interval, referenceTime);
 
         // Calculate bucket boundaries
         long bucketStart = bucketMapper.calculateBucketStart(minTimestamp);
@@ -228,6 +257,7 @@ public class SummarizeStage implements UnaryPipelineStage {
         builder.field("interval", interval);
         builder.field("function", function.toString().toLowerCase(Locale.ROOT));
         builder.field("alignToFrom", alignToFrom);
+        builder.field("referenceTimeConstant", referenceTimeConstant);
     }
 
     @Override
@@ -235,6 +265,7 @@ public class SummarizeStage implements UnaryPipelineStage {
         out.writeLong(interval);
         function.writeTo(out);
         out.writeBoolean(alignToFrom);
+        out.writeLong(referenceTimeConstant);
     }
 
     /**
@@ -244,7 +275,8 @@ public class SummarizeStage implements UnaryPipelineStage {
         long interval = in.readLong();
         WindowAggregationType function = WindowAggregationType.readFrom(in);
         boolean alignToFrom = in.readBoolean();
-        return new SummarizeStage(interval, function, alignToFrom);
+        long referenceTimeConstant = in.readLong();
+        return new SummarizeStage(interval, function, alignToFrom).setReferenceTimeConstant(referenceTimeConstant);
     }
 
     /**
@@ -271,26 +303,36 @@ public class SummarizeStage implements UnaryPipelineStage {
         long interval = ((Number) intervalObj).longValue();
 
         // Parse function (required)
-        if (!args.containsKey("function")) {
+        Object functionObj = args.get("function");
+        if (functionObj == null) {
             throw new IllegalArgumentException("function argument is required");
         }
-        Object functionObj = args.get("function");
         if (!(functionObj instanceof String)) {
             throw new IllegalArgumentException("function must be a string");
         }
         WindowAggregationType function = WindowAggregationType.fromString((String) functionObj);
 
-        // Parse alignToFrom (optional, default: false)
-        boolean alignToFrom = false;
-        if (args.containsKey("alignToFrom")) {
-            Object alignObj = args.get("alignToFrom");
-            if (!(alignObj instanceof Boolean)) {
-                throw new IllegalArgumentException("alignToFrom must be a boolean");
-            }
-            alignToFrom = (Boolean) alignObj;
+        // Parse alignToFrom (required)
+        Object alignObj = args.get("alignToFrom");
+        if (alignObj == null) {
+            throw new IllegalArgumentException("alignToFrom argument is required");
         }
+        if (!(alignObj instanceof Boolean)) {
+            throw new IllegalArgumentException("alignToFrom must be a boolean");
+        }
+        boolean alignToFrom = (Boolean) alignObj;
 
-        return new SummarizeStage(interval, function, alignToFrom);
+        // Parse referenceTimeConstant (required)
+        Object refTimeObj = args.get("referenceTimeConstant");
+        if (refTimeObj == null) {
+            throw new IllegalArgumentException("referenceTimeConstant argument is required");
+        }
+        if (!(refTimeObj instanceof Number)) {
+            throw new IllegalArgumentException("referenceTimeConstant must be a number");
+        }
+        long referenceTimeConstant = ((Number) refTimeObj).longValue();
+
+        return new SummarizeStage(interval, function, alignToFrom).setReferenceTimeConstant(referenceTimeConstant);
     }
 
     @Override
@@ -302,11 +344,14 @@ public class SummarizeStage implements UnaryPipelineStage {
             return false;
         }
         SummarizeStage that = (SummarizeStage) obj;
-        return interval == that.interval && alignToFrom == that.alignToFrom && Objects.equals(function, that.function);
+        return interval == that.interval
+            && alignToFrom == that.alignToFrom
+            && referenceTimeConstant == that.referenceTimeConstant
+            && Objects.equals(function, that.function);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(interval, function, alignToFrom);
+        return Objects.hash(interval, function, alignToFrom, referenceTimeConstant);
     }
 }

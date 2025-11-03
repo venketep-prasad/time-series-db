@@ -47,7 +47,8 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
             WindowAggregationType.withPercentile(99) };
         WindowAggregationType function = functions[randomIntBetween(0, functions.length - 1)];
         boolean alignToFrom = randomBoolean();
-        return new SummarizeStage(interval, function, alignToFrom);
+        long referenceTimeConstant = randomLong();
+        return new SummarizeStage(interval, function, alignToFrom).setReferenceTimeConstant(referenceTimeConstant);
     }
 
     /**
@@ -315,12 +316,17 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
     }
 
     public void testFromArgsMissingFunction() {
-        Map<String, Object> args = Map.of("interval", 5000);
+        Map<String, Object> args = Map.of("interval", 5000, "alignToFrom", false);
+        expectThrows(IllegalArgumentException.class, () -> SummarizeStage.fromArgs(args));
+    }
+
+    public void testFromArgsMissingAlignToFrom() {
+        Map<String, Object> args = Map.of("interval", 5000, "function", "sum");
         expectThrows(IllegalArgumentException.class, () -> SummarizeStage.fromArgs(args));
     }
 
     public void testFromArgsWithAllParameters() {
-        Map<String, Object> args = Map.of("interval", 10000, "function", "avg", "alignToFrom", true);
+        Map<String, Object> args = Map.of("interval", 10000, "function", "avg", "alignToFrom", true, "referenceTimeConstant", 123456789L);
 
         SummarizeStage stage = SummarizeStage.fromArgs(args);
         assertNotNull(stage);
@@ -356,8 +362,20 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         expectThrows(IllegalArgumentException.class, () -> SummarizeStage.fromArgs(args));
     }
 
+    public void testFromArgsMissingReferenceTimeConstant() {
+        Map<String, Object> args = Map.of("interval", 5000, "function", "sum", "alignToFrom", false);
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizeStage.fromArgs(args));
+        assertTrue(exception.getMessage().contains("referenceTimeConstant argument is required"));
+    }
+
+    public void testFromArgsInvalidReferenceTimeConstantType() {
+        Map<String, Object> args = Map.of("interval", 5000, "function", "sum", "alignToFrom", false, "referenceTimeConstant", "invalid");
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizeStage.fromArgs(args));
+        assertTrue(exception.getMessage().contains("referenceTimeConstant must be a number"));
+    }
+
     public void testToXContent_defaultParameters() throws Exception {
-        SummarizeStage stage = new SummarizeStage(60000, WindowAggregationType.SUM, false);
+        SummarizeStage stage = new SummarizeStage(60000, WindowAggregationType.SUM, false).setReferenceTimeConstant(0L);
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
         builder.startObject();
@@ -365,11 +383,11 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":60000,\"function\":\"sum\",\"alignToFrom\":false}", json);
+        assertEquals("{\"interval\":60000,\"function\":\"sum\",\"alignToFrom\":false,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withAvgFunction() throws Exception {
-        SummarizeStage stage = new SummarizeStage(300000, WindowAggregationType.AVG, false);
+        SummarizeStage stage = new SummarizeStage(300000, WindowAggregationType.AVG, false).setReferenceTimeConstant(0L);
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
         builder.startObject();
@@ -377,7 +395,7 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":300000,\"function\":\"avg\",\"alignToFrom\":false}", json);
+        assertEquals("{\"interval\":300000,\"function\":\"avg\",\"alignToFrom\":false,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withAlignToFromTrue() throws Exception {
@@ -389,11 +407,11 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":60000,\"function\":\"max\",\"alignToFrom\":true}", json);
+        assertEquals("{\"interval\":60000,\"function\":\"max\",\"alignToFrom\":true,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withPercentileFunction() throws Exception {
-        SummarizeStage stage = new SummarizeStage(120000, WindowAggregationType.withPercentile(95), false);
+        SummarizeStage stage = new SummarizeStage(120000, WindowAggregationType.withPercentile(95), false).setReferenceTimeConstant(0L);
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
         builder.startObject();
@@ -401,7 +419,7 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":120000,\"function\":\"p95.0\",\"alignToFrom\":false}", json);
+        assertEquals("{\"interval\":120000,\"function\":\"p95.0\",\"alignToFrom\":false,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withStdDevFunction() throws Exception {
@@ -413,11 +431,11 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":180000,\"function\":\"stddev\",\"alignToFrom\":true}", json);
+        assertEquals("{\"interval\":180000,\"function\":\"stddev\",\"alignToFrom\":true,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withMinFunction() throws Exception {
-        SummarizeStage stage = new SummarizeStage(30000, WindowAggregationType.MIN, false);
+        SummarizeStage stage = new SummarizeStage(30000, WindowAggregationType.MIN, false).setReferenceTimeConstant(0L);
         XContentBuilder builder = XContentFactory.jsonBuilder();
 
         builder.startObject();
@@ -425,7 +443,7 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":30000,\"function\":\"min\",\"alignToFrom\":false}", json);
+        assertEquals("{\"interval\":30000,\"function\":\"min\",\"alignToFrom\":false,\"referenceTimeConstant\":0}", json);
     }
 
     public void testToXContent_withLastFunction() throws Exception {
@@ -437,7 +455,7 @@ public class SummarizeStageTests extends AbstractWireSerializingTestCase<Summari
         builder.endObject();
 
         String json = builder.toString();
-        assertEquals("{\"interval\":90000,\"function\":\"last\",\"alignToFrom\":true}", json);
+        assertEquals("{\"interval\":90000,\"function\":\"last\",\"alignToFrom\":true,\"referenceTimeConstant\":0}", json);
     }
 
     public void testNullInputThrowsException() {

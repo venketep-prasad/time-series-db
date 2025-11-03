@@ -39,7 +39,7 @@ public class M3QLTranslator implements QueryConfigTranslator {
         // Get pushdown setting from query config (default is pushdown enabled, so disablePushdown=false means pushdown=true)
         boolean pushdown = !queryConfig.isDisablePushdown();
 
-        // Create M3OSTranslator parameters
+        // Create M3OSTranslator parameters (profile defaults to false)
         M3OSTranslator.Params params = new M3OSTranslator.Params(minTime.toEpochMilli(), maxTime.toEpochMilli(), step, pushdown, false);
 
         // Translate M3QL query string to SearchSourceBuilder

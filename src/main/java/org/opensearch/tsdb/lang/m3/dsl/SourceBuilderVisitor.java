@@ -376,7 +376,14 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
         validateChildCountExact(planNode, 1);
 
         long interval = getDurationAsLong(planNode.getInterval());
-        SummarizeStage summarizeStage = new SummarizeStage(interval, planNode.getFunction(), planNode.isAlignToFrom());
+        boolean alignToFrom = planNode.isAlignToFrom();
+        SummarizeStage summarizeStage = new SummarizeStage(interval, planNode.getFunction(), alignToFrom);
+
+        // Only set reference time constant when using fixed alignment (alignToFrom=false)
+        if (!alignToFrom) {
+            summarizeStage.setReferenceTimeConstant(SummarizePlanNode.GO_ZERO_TIME_MILLIS);
+        }
+
         stageStack.add(summarizeStage);
 
         return planNode.getChildren().getFirst().accept(this);

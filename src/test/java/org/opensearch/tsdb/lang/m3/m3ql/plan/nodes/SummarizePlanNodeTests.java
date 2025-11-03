@@ -121,13 +121,16 @@ public class SummarizePlanNodeTests extends BasePlanNodeTests {
         assertEquals(99.0f, node.getFunction().getPercentileValue(), 0.001);
     }
 
-    public void testSummarizePlanNodeFactoryMethodThrowsOnOneArgument() {
+    public void testSummarizePlanNodeFactoryMethodWithOneArgument() {
         FunctionNode functionNode = new FunctionNode();
         functionNode.setFunctionName("summarize");
         functionNode.addChildNode(new ValueNode("5m"));
 
-        IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
-        assertTrue(exception.getMessage().contains("must have 2-3 arguments"));
+        SummarizePlanNode node = SummarizePlanNode.of(functionNode);
+
+        assertEquals(Duration.ofMinutes(5), node.getInterval());
+        assertEquals(WindowAggregationType.SUM, node.getFunction()); // default to sum
+        assertFalse(node.isAlignToFrom()); // default to false
     }
 
     public void testSummarizePlanNodeFactoryMethodThrowsOnTooManyArguments() {
@@ -138,8 +141,17 @@ public class SummarizePlanNodeTests extends BasePlanNodeTests {
         functionNode.addChildNode(new ValueNode("true"));
         functionNode.addChildNode(new ValueNode("extra"));
 
-        IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
-        assertTrue(exception.getMessage().contains("must have 2-3 arguments"));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("Summarize function must have 1-3 arguments: interval, [function], [alignToFrom]. Got: 4", exception.getMessage());
+    }
+
+    public void testSummarizePlanNodeFactoryMethodThrowsOnNoArguments() {
+        FunctionNode functionNode = new FunctionNode();
+        functionNode.setFunctionName("summarize");
+        // No arguments added
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("Summarize function must have 1-3 arguments: interval, [function], [alignToFrom]. Got: 0", exception.getMessage());
     }
 
     public void testSummarizePlanNodeFactoryMethodThrowsOnNonValueNodes() {
@@ -148,7 +160,18 @@ public class SummarizePlanNodeTests extends BasePlanNodeTests {
         functionNode.addChildNode(new FunctionNode()); // not a value node
         functionNode.addChildNode(new ValueNode("avg"));
 
-        expectThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("First argument must be a value representing the interval", exception.getMessage());
+    }
+
+    public void testSummarizePlanNodeFactoryMethodThrowsOnNonValueNodeFunction() {
+        FunctionNode functionNode = new FunctionNode();
+        functionNode.setFunctionName("summarize");
+        functionNode.addChildNode(new ValueNode("5m"));
+        functionNode.addChildNode(new FunctionNode()); // Second argument is not a ValueNode
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("Second argument must be a value representing the aggregation function", exception.getMessage());
     }
 
     public void testSummarizePlanNodeFactoryMethodThrowsOnInvalidAlignToFrom() {
@@ -158,13 +181,25 @@ public class SummarizePlanNodeTests extends BasePlanNodeTests {
         functionNode.addChildNode(new ValueNode("avg"));
         functionNode.addChildNode(new ValueNode("invalid"));
 
-        IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
-        assertTrue(exception.getMessage().contains("must be 'true' or 'false'"));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("Third argument (alignToFrom) must be 'true' or 'false', got: invalid", exception.getMessage());
+    }
+
+    public void testSummarizePlanNodeFactoryMethodThrowsOnNonValueNodeAlignToFrom() {
+        FunctionNode functionNode = new FunctionNode();
+        functionNode.setFunctionName("summarize");
+        functionNode.addChildNode(new ValueNode("5m"));
+        functionNode.addChildNode(new ValueNode("avg"));
+        functionNode.addChildNode(new FunctionNode()); // Third argument is not a ValueNode
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> SummarizePlanNode.of(functionNode));
+        assertEquals("Third argument must be a boolean value representing alignToFrom", exception.getMessage());
     }
 
     public void testSummarizePlanNodeGetInvalidInterval() {
         SummarizePlanNode node = new SummarizePlanNode(1, "-5m", WindowAggregationType.AVG, false);
-        IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, node::getInterval);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, node::getInterval);
         assertEquals("Interval cannot be negative: -5m", exception.getMessage());
     }
 
