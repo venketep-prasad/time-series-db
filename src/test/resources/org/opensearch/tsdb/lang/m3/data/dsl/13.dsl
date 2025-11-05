@@ -559,8 +559,9 @@
         "buckets_path" : [ ],
         "stages" : [
           {
-            "type" : "as_percent",
-            "right_op_reference" : "2"
+            "type" : "subtract",
+            "right_op_reference" : "2",
+            "keep_nans": false
           },
           {
             "type" : "abs"
@@ -579,7 +580,8 @@
         "stages" : [
           {
             "type" : "divide",
-            "right_op_reference" : "8"
+            "right_op_reference" : "8",
+            "labels" : ["error_type"]
           },
           {
             "type" : "abs"

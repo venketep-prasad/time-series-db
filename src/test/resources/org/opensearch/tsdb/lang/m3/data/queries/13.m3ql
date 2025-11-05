@@ -2,8 +2,7 @@
 # TODO: ensure repeated fetch pipeline (service:logger name:attempts) is only executed once
 log_difference = fetch service:logger name:logs
   | sum
-  # | diff ( TODO uncomment this line and remove the following asPercent once diff is implemented
-  | asPercent (
+  | diff (
     fetch service:logger name:attempts
       | sum
   )
@@ -14,7 +13,7 @@ not_error_backoff_proportion = fetch service:logger error_type:!backoff
   | divideSeries (
     fetch service:logger error_type:*
       | sum
-  )
+  ) error_type
   | abs
   | transformNull 0
   | moving 5m avg;

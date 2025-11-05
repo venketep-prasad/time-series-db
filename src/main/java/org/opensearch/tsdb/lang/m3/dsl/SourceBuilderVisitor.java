@@ -17,6 +17,10 @@ import org.opensearch.tsdb.core.mapping.Constants;
 import org.opensearch.tsdb.core.model.LabelConstants;
 import org.opensearch.tsdb.lang.m3.common.AggregationType;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AbsPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AsPercentPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DiffPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DividePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesBinaryPlanNode;
 import org.opensearch.tsdb.lang.m3.stage.AbsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasStage;
@@ -39,6 +43,7 @@ import org.opensearch.tsdb.lang.m3.stage.RemoveEmptyStage;
 import org.opensearch.tsdb.lang.m3.stage.ScaleStage;
 import org.opensearch.tsdb.lang.m3.stage.ScaleToSecondsStage;
 import org.opensearch.tsdb.lang.m3.stage.SortStage;
+import org.opensearch.tsdb.lang.m3.stage.SubtractStage;
 import org.opensearch.tsdb.lang.m3.stage.SummarizeStage;
 import org.opensearch.tsdb.lang.m3.stage.SumStage;
 import org.opensearch.tsdb.lang.m3.stage.TimeshiftStage;
@@ -598,15 +603,17 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
     }
 
     private PipelineStage getStageFor(M3PlanNode planNode, String rhsReferenceName) {
-        if (planNode instanceof BinaryPlanNode binaryPlanNode) {
-            return switch (binaryPlanNode.getType()) {
-                // TODO: support tag/label name param
-                case AS_PERCENT -> new AsPercentStage(rhsReferenceName);
-                // TODO: return DiffStage once implemented
-                case DIFF -> throw new UnsupportedOperationException("diff not yet implemented");
-                case DIVIDE_SERIES -> new DivideStage(rhsReferenceName);
-                case FALLBACK_SERIES -> new FallbackSeriesBinaryStage(rhsReferenceName);
-            };
+        if (planNode instanceof DiffPlanNode diffPlanNode) {
+            return new SubtractStage(rhsReferenceName, diffPlanNode.isKeepNans(), diffPlanNode.getTags());
+        }
+        if (planNode instanceof AsPercentPlanNode asPercentPlanNode) {
+            return new AsPercentStage(rhsReferenceName, asPercentPlanNode.getTags());
+        }
+        if (planNode instanceof DividePlanNode dividePlanNode) {
+            return new DivideStage(rhsReferenceName, dividePlanNode.getTags());
+        }
+        if (planNode instanceof FallbackSeriesBinaryPlanNode) {
+            return new FallbackSeriesBinaryStage(rhsReferenceName);
         }
         if (planNode instanceof UnionPlanNode) {
             return new UnionStage(rhsReferenceName);

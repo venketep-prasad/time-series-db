@@ -21,7 +21,9 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AbsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AsPercentPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesBinaryPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.HistogramPercentilePlanNode;
@@ -45,6 +47,7 @@ import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -185,7 +188,7 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
      * Test BinaryPlanNode with correct number of children (2).
      */
     public void testBinaryPlanNodeWithTwoChildren() {
-        BinaryPlanNode planNode = new BinaryPlanNode(1, BinaryPlanNode.Type.AS_PERCENT);
+        BinaryPlanNode planNode = new AsPercentPlanNode(1, Collections.emptyList());
         planNode.addChild(createMockFetchNode(2));
         planNode.addChild(createMockFetchNode(3));
 
@@ -197,24 +200,24 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
      * Test BinaryPlanNode with incorrect number of children (1).
      */
     public void testBinaryPlanNodeWithOneChild() {
-        BinaryPlanNode planNode = new BinaryPlanNode(1, BinaryPlanNode.Type.AS_PERCENT);
+        BinaryPlanNode planNode = new AsPercentPlanNode(1, Collections.emptyList());
         planNode.addChild(createMockFetchNode(2));
 
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
-        assertEquals("BinaryPlanNode must have exactly two children", exception.getMessage());
+        assertEquals("AsPercentPlanNode must have exactly two children", exception.getMessage());
     }
 
     /**
      * Test BinaryPlanNode with incorrect number of children (3).
      */
     public void testBinaryPlanNodeWithThreeChildren() {
-        BinaryPlanNode planNode = new BinaryPlanNode(1, BinaryPlanNode.Type.AS_PERCENT);
+        BinaryPlanNode planNode = new AsPercentPlanNode(1, Collections.emptyList());
         planNode.addChild(createMockFetchNode(2));
         planNode.addChild(createMockFetchNode(3));
         planNode.addChild(createMockFetchNode(4));
 
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
-        assertEquals("BinaryPlanNode must have exactly two children", exception.getMessage());
+        assertEquals("AsPercentPlanNode must have exactly two children", exception.getMessage());
     }
 
     /**
@@ -724,7 +727,7 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
      * Test BinaryPlanNode with FALLBACK_SERIES type.
      */
     public void testBinaryPlanNodeWithFallbackSeriesType() {
-        BinaryPlanNode planNode = new BinaryPlanNode(1, BinaryPlanNode.Type.FALLBACK_SERIES);
+        BinaryPlanNode planNode = new FallbackSeriesBinaryPlanNode(1);
         planNode.addChild(createMockFetchNode(2));
         planNode.addChild(createMockFetchNode(3));
 

@@ -56,6 +56,8 @@ ROOT
               FUNCTION(timeshift)
                 VALUE(2d)
           FUNCTION(avg)
+      VALUE(city_name)
+      VALUE(region)
     FUNCTION(transformNull)
     FUNCTION(moving)
       VALUE(1h)

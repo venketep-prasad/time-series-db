@@ -8,12 +8,18 @@
 package org.opensearch.tsdb.lang.m3.m3ql.plan;
 
 import org.opensearch.tsdb.lang.m3.common.Constants;
+import org.opensearch.tsdb.lang.m3.common.Utils;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.FunctionNode;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.GroupNode;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.M3ASTNode;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.PipelineNode;
 import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.RootNode;
+import org.opensearch.tsdb.lang.m3.m3ql.parser.nodes.ValueNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AsPercentPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DiffPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DividePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesBinaryPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.M3PlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.UnionPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.visitor.M3PlanVisitor;
@@ -21,6 +27,9 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.visitor.M3PlanVisitor;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.opensearch.common.Booleans.parseBooleanStrict;
 
 /**
  * M3ASTConverter is responsible for converting the M3QL AST into a plan.
@@ -235,7 +244,7 @@ public class M3ASTConverter {
         }
 
         M3PlanNode rhs = handlePipelineOrGroupNode(child);
-        BinaryPlanNode binaryPlanNode = new BinaryPlanNode(M3PlannerContext.generateId(), BinaryPlanNode.Type.FALLBACK_SERIES);
+        BinaryPlanNode binaryPlanNode = new FallbackSeriesBinaryPlanNode(M3PlannerContext.generateId());
         binaryPlanNode.addChild(lhs);
         binaryPlanNode.addChild(rhs);
         return binaryPlanNode;
@@ -260,23 +269,69 @@ public class M3ASTConverter {
             );
         }
         M3PlanNode rhs = handlePipelineOrGroupNode(child);
-        BinaryPlanNode binaryPlanNode = new BinaryPlanNode(
-            M3PlannerContext.generateId(),
-            getBinaryPipelineType(functionNode.getFunctionName())
-        );
+        BinaryPlanNode binaryPlanNode = createBinaryPlanNode(functionNode);
+
         binaryPlanNode.addChild(lhs);
         binaryPlanNode.addChild(rhs);
         return binaryPlanNode;
     }
 
-    // Maps function names to BinaryPlanNode.Type enums
-    private BinaryPlanNode.Type getBinaryPipelineType(String functionName) {
+    private BinaryPlanNode createBinaryPlanNode(FunctionNode functionNode) {
+        String functionName = functionNode.getFunctionName();
         return switch (functionName) {
-            case Constants.Functions.Binary.AS_PERCENT, Constants.Functions.Binary.RATIO -> BinaryPlanNode.Type.AS_PERCENT;
-            case Constants.Functions.Binary.DIFF, Constants.Functions.Binary.SUBTRACT -> BinaryPlanNode.Type.DIFF;
-            case Constants.Functions.Binary.DIVIDE, Constants.Functions.Binary.DIVIDE_SERIES -> BinaryPlanNode.Type.DIVIDE_SERIES;
+            case Constants.Functions.Binary.AS_PERCENT, Constants.Functions.Binary.RATIO -> {
+                List<String> tags = extractGroupByTags(functionNode, 1);
+                yield new AsPercentPlanNode(M3PlannerContext.generateId(), tags);
+            }
+
+            case Constants.Functions.Binary.DIFF, Constants.Functions.Binary.SUBTRACT -> {
+                boolean keepNans = extractKeepNansParameter(functionNode);
+                List<String> tags = extractGroupByTags(functionNode, 2);
+                yield new DiffPlanNode(M3PlannerContext.generateId(), keepNans, tags);
+            }
+
+            case Constants.Functions.Binary.DIVIDE, Constants.Functions.Binary.DIVIDE_SERIES -> {
+                List<String> tags = extractGroupByTags(functionNode, 1);
+                yield new DividePlanNode(M3PlannerContext.generateId(), tags);
+            }
+
             default -> throw new IllegalArgumentException("Binary function " + functionName + " is not supported.");
         };
+    }
+
+    /**
+     * Extracts the group-by tags from function arguments.
+     * @param functionNode
+     * @param startIndex starting index for children node
+     */
+    private List<String> extractGroupByTags(FunctionNode functionNode, int startIndex) {
+        return functionNode.getChildren()
+            .stream()
+            .skip(startIndex)
+            .filter(astNode -> astNode instanceof ValueNode)
+            .map(astNode -> Utils.stripDoubleQuotes(((ValueNode) astNode).getValue()))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Extracts the keepNans boolean parameter from diff/subtract function (argument index 1).
+     */
+    private boolean extractKeepNansParameter(FunctionNode functionNode) {
+        if (functionNode.getChildren().size() <= 1) {
+            return false;
+        }
+
+        M3ASTNode booleanValue = functionNode.getChildren().get(1);
+        if (booleanValue instanceof ValueNode node) {
+            try {
+                return parseBooleanStrict(node.getValue(), false);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                    "function " + functionNode.getFunctionName() + " expects argument 1 of type bool, received '" + node.getValue() + "'"
+                );
+            }
+        }
+        return false;
     }
 
     // Handles a regular function node by creating the corresponding plan node and chaining appropriately

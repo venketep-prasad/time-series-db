@@ -1,5 +1,5 @@
 MOVING(5m, MIN)
-  AS_PERCENT
+  AS_PERCENT(groupBy=[])
     AGG(SUM, groupBy=[])
       FETCH({name=[metric1]}, !{})
     AGG(AVG, groupBy=[])

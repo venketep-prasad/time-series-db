@@ -8,11 +8,8 @@
 package org.opensearch.tsdb.lang.m3.dsl;
 
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
-import org.opensearch.common.xcontent.json.JsonXContent;
-import org.opensearch.core.xcontent.DeprecationHandler;
-import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.core.xcontent.XContentParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.tsdb.TestUtils;
@@ -31,6 +28,7 @@ public class M3OSTranslatorTests extends OpenSearchTestCase {
     private static final long START_TIME = 1_000_000_000;
     private static final long END_TIME = START_TIME + 1_000_000;
     private static final long STEP = 100_000;
+    ObjectMapper mapper = new ObjectMapper();
 
     private final String testCaseName;
     private final String query;
@@ -77,25 +75,14 @@ public class M3OSTranslatorTests extends OpenSearchTestCase {
                 query,
                 new M3OSTranslator.Params(Constants.Time.DEFAULT_TIME_UNIT, START_TIME, END_TIME, STEP, true, false)
             );
-            assertEquals("DSL does not match for test case: " + testCaseName, expected, makePretty(searchSourceBuilder.toString()));
+            JsonNode expectedJson = mapper.readTree(expected);
+            JsonNode actualJson = mapper.readTree(searchSourceBuilder.toString());
+            assertEquals("DSL does not match for test case: " + testCaseName, expectedJson, actualJson);
+        } catch (IOException e) {
+            // Handle parsing errors (e.g., if one of the strings is not valid JSON)
+            fail("Error parsing JSON string: " + e.getMessage() + testCaseName);
         } catch (Exception e) {
             fail("Failed to run translator test for test case " + testCaseName + ": " + query + " with error: " + e.getMessage());
-        }
-    }
-
-    private String makePretty(String json) throws IOException {
-        try (
-            XContentParser parser = JsonXContent.jsonXContent.createParser(
-                NamedXContentRegistry.EMPTY,
-                DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
-                json
-            )
-        ) {
-            try (XContentBuilder builder = JsonXContent.contentBuilder()) {
-                builder.prettyPrint();
-                builder.copyCurrentStructure(parser);
-                return builder.toString();
-            }
         }
     }
 }

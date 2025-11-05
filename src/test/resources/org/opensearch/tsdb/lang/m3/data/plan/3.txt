@@ -1,6 +1,6 @@
 MOVING(1h, AVG)
   TRANSFORM_NULL(0.0)
-    AS_PERCENT
+    AS_PERCENT(groupBy=[city_name, region])
       MOVING(1h, SUM)
         TRANSFORM_NULL(0.0)
           AGG(SUM, groupBy=[city_name])

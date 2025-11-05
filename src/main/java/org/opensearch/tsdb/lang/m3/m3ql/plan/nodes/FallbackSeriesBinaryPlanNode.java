@@ -9,21 +9,19 @@ package org.opensearch.tsdb.lang.m3.m3ql.plan.nodes;
 
 import org.opensearch.tsdb.lang.m3.m3ql.plan.visitor.M3PlanVisitor;
 
-/**
- * Represents a binary operation plan node.
- */
-public abstract class BinaryPlanNode extends M3PlanNode {
-    /**
-     * Constructor for BinaryPlanNode.
-     *
-     * @param id node id
-     */
-    public BinaryPlanNode(int id) {
+public class FallbackSeriesBinaryPlanNode extends BinaryPlanNode {
+
+    public FallbackSeriesBinaryPlanNode(int id) {
         super(id);
     }
 
     @Override
     public <T> T accept(M3PlanVisitor<T> visitor) {
         return visitor.visit(this);
+    }
+
+    @Override
+    public String getExplainName() {
+        return "FALLBACK_SERIES";
     }
 }

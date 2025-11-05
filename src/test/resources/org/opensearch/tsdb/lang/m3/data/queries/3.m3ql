@@ -10,6 +10,6 @@ c = (a | timeshift 2d);
 
 mean = (a | b | c | avg);
 
-a | asPercent(mean)
+a | asPercent(mean) city_name region
   | transformNull
   | moving 1h avg

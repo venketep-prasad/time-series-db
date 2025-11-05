@@ -508,7 +508,8 @@
         "stages" : [
           {
             "type" : "as_percent",
-            "right_op_reference" : "13"
+            "right_op_reference" : "13",
+            "labels": ["city_name", "region"]
           },
           {
             "type" : "transform_null",

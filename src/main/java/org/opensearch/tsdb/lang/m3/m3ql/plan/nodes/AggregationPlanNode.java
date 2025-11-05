@@ -53,7 +53,7 @@ public class AggregationPlanNode extends M3PlanNode {
     }
 
     /**
-     * Returns the aggregation type of this node.
+     * Returns a list of aggregation keys
      * @return List of Strings representing the aggregation key tags, null indicates aggregate all series without grouping.
      */
     public List<String> getTags() {

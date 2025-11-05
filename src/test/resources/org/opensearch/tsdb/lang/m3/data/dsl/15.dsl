@@ -379,7 +379,11 @@
         "stages" : [
           {
             "type" : "as_percent",
-            "right_op_reference" : "4"
+            "right_op_reference" : "4",
+            "labels" : [
+              "name",
+              "service"
+            ]
           },
           {
             "type" : "avg"
