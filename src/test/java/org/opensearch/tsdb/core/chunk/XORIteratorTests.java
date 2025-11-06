@@ -182,7 +182,7 @@ public class XORIteratorTests extends OpenSearchTestCase {
         java.util.function.Function<Exception, ChunkIterator> iteratorCreator = (ex) -> new ChunkIterator() {
             @Override
             public ValueType next() {
-                return ValueType.FLOAT;
+                return ValueType.NONE;
             }
 
             @Override

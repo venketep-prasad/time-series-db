@@ -8,3 +8,6 @@
  */
 
 rootProject.name = 'tsdb'
+
+// Include benchmarks subproject
+include 'benchmarks'

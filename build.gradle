@@ -296,15 +296,6 @@ jacocoTestCoverageVerification {
 tasks.named("precommit").configure { dependsOn("spotlessCheck", "javadoc") }
 tasks.named("check").configure { dependsOn(jacocoTestCoverageVerification) }
 
-sourceSets {
-    jmh {
-        java.srcDirs = ['src/jmhTest/java']
-        resources.srcDirs = ['src/jmhTest/resources']
-        compileClasspath += sourceSets.main.runtimeClasspath
-        runtimeClasspath = sourceSets.main.runtimeClasspath
-    }
-}
-
 /**********************************************
  *            JavaCC Configuration            *
  **********************************************/
@@ -329,29 +320,12 @@ dependencies {
     javaRestTestImplementation 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
     javaRestTestImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2'
 
-    // jmh dependencies
-    jmhImplementation 'org.openjdk.jmh:jmh-core:1.35'
-    jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.35'
-
     // internalClusterTest dependencies
     internalClusterTestImplementation 'com.fasterxml.jackson.core:jackson-core:2.18.2'
     internalClusterTestImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     internalClusterTestImplementation 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
     internalClusterTestImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2'
 }
-
-
-task jmh(type: JavaExec, dependsOn: [jmhClasses]) {
-    main = 'org.openjdk.jmh.Main'
-    classpath = sourceSets.jmh.output + sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
-}
-
-compileJmhJava {
-    options.annotationProcessorPath = configurations.jmhAnnotationProcessor
-    options.compilerArgs = ['-processor' ,'org.openjdk.jmh.generators.BenchmarkProcessor']
-}
-
-classes.finalizedBy(jmhClasses)
 
 tasks.register("cleanJavaCCGenerated", Delete) {
     delete fileTree(javaccOutputPath) {

@@ -1,0 +1,95 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The OpenSearch Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+plugins {
+    id 'java'
+}
+
+description = 'JMH Benchmarks for OpenSearch TSDB'
+
+repositories {
+    mavenLocal()
+    maven { url "https://ci.opensearch.org/ci/dbc/snapshots/maven/" }
+    mavenCentral()
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+dependencies {
+    // Depend on the main TSDB project
+    implementation project(':')
+
+    // JMH dependencies
+    implementation 'org.openjdk.jmh:jmh-core:1.35'
+    annotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.35'
+}
+
+// Configure annotation processing for JMH
+tasks.withType(JavaCompile) {
+    options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+// JMH task to run benchmarks
+tasks.register('jmh', JavaExec) {
+    dependsOn classes
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.main.runtimeClasspath
+
+    // Build JMH arguments from project properties
+    def jmhArgs = []
+
+    if (project.hasProperty('jmh.warmupIterations')) {
+        jmhArgs.addAll(['-wi', project.property('jmh.warmupIterations')])
+    }
+    if (project.hasProperty('jmh.measurementIterations')) {
+        jmhArgs.addAll(['-i', project.property('jmh.measurementIterations')])
+    }
+    if (project.hasProperty('jmh.forks')) {
+        jmhArgs.addAll(['-f', project.property('jmh.forks')])
+    }
+    if (project.hasProperty('jmh.params')) {
+        jmhArgs.addAll(['-p', project.property('jmh.params')])
+    }
+    if (project.hasProperty('jmh.profilers')) {
+        jmhArgs.addAll(['-prof', project.property('jmh.profilers')])
+    }
+
+    // Pattern matching (includes) is a positional argument, should come last
+    if (project.hasProperty('jmh.includes')) {
+        jmhArgs.add(project.property('jmh.includes'))
+    }
+
+    args = jmhArgs
+}
+
+// List all available benchmarks
+tasks.register('jmhList', JavaExec) {
+    dependsOn classes
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.main.runtimeClasspath
+    args = ['-l']
+}
+
+// List available profilers
+tasks.register('jmhProfilers', JavaExec) {
+    dependsOn classes
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.main.runtimeClasspath
+    args = ['-lprof']
+}
+
+// Show JMH help
+tasks.register('jmhHelp', JavaExec) {
+    dependsOn classes
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.main.runtimeClasspath
+    args = ['-h']
+}

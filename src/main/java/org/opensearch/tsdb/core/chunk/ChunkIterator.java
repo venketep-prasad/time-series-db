@@ -29,7 +29,7 @@ public interface ChunkIterator {
 
     /**
      * Advances the iterator to the next value and returns the type of value found
-     * @return ValueType.FLOAT if a value is available, ValueType.NONE if no more values
+     * @return ValueType.FLOAT if a value is available, ValueType.NONE if no more values or an error is raised
      */
     ChunkIterator.ValueType next();
 
@@ -55,8 +55,6 @@ public interface ChunkIterator {
 
     /**
      * Record to hold timestamp and value pair
-     * @param timestamp the timestamp in milliseconds
-     * @param value the numeric value at this timestamp
      */
     record TimestampValue(long timestamp, double value) {
     }
@@ -85,23 +83,23 @@ public interface ChunkIterator {
         List<Sample> samples = totalSamples > 0 ? new ArrayList<>(totalSamples) : new ArrayList<>();
 
         while (next() != ValueType.NONE) {
-            // Check for errors after each iteration
-            Exception error = error();
-            if (error != null) {
-                if (error instanceof IllegalStateException) {
-                    throw (IllegalStateException) error;
-                } else if (error instanceof IllegalArgumentException) {
-                    throw (IllegalArgumentException) error;
-                } else {
-                    throw new RuntimeException("Error during chunk iteration", error);
-                }
-            }
-
             TimestampValue tv = at();
             long timestamp = tv.timestamp();
             if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
                 double value = tv.value();
                 samples.add(new FloatSample(timestamp, value));
+            }
+        }
+
+        // if an error is raised, next() will have returned NONE - check for any leftover error
+        Exception error = error();
+        if (error != null) {
+            if (error instanceof IllegalStateException illegalStateException) {
+                throw illegalStateException;
+            } else if (error instanceof IllegalArgumentException illegalArgumentException) {
+                throw illegalArgumentException;
+            } else {
+                throw new RuntimeException("Error during chunk iteration", error);
             }
         }
 
