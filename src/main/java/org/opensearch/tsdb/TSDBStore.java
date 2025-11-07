@@ -14,6 +14,7 @@ import org.opensearch.index.IndexSettings;
 import org.opensearch.index.shard.ShardPath;
 import org.opensearch.index.store.Store;
 import org.opensearch.plugin.store.subdirectory.SubdirectoryAwareStore;
+import org.opensearch.plugins.IndexStorePlugin;
 
 /**
  * TSDB-specific store implementation that extends SubdirectoryAwareStore.
@@ -39,5 +40,30 @@ public class TSDBStore extends SubdirectoryAwareStore {
         ShardPath shardPath
     ) {
         super(shardId, indexSettings, directory, shardLock, onClose, shardPath);
+    }
+
+    /**
+     * Constructs a new TSDBStore instance.
+     *
+     * @param shardId       The shard identifier
+     * @param indexSettings The index settings
+     * @param directory     The Lucene directory for storage
+     * @param shardLock     The shard lock for concurrency control
+     * @param onClose       Callback executed when the store is closed
+     * @param shardPath     The file system path for the shard
+     * @param directoryFactory the directory factory
+     */
+    public TSDBStore(
+        ShardId shardId,
+        IndexSettings indexSettings,
+        Directory directory,
+        ShardLock shardLock,
+        Store.OnClose onClose,
+        ShardPath shardPath,
+        IndexStorePlugin.DirectoryFactory directoryFactory
+    ) {
+        // FIXME: pass directoryFactory once latest store-subdirectory snapshot is available
+        super(shardId, indexSettings, directory, shardLock, onClose, shardPath);
+        // super(shardId, indexSettings, directory, shardLock, onClose, shardPath, directoryFactory);
     }
 }

@@ -275,6 +275,36 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         directory.close();
     }
 
+    public void testTSDBStoreFactoryCreatesStoreWithDirectoryFactory() throws Exception {
+        Map<String, IndexStorePlugin.StoreFactory> storeFactories = plugin.getStoreFactories();
+        IndexStorePlugin.StoreFactory factory = storeFactories.get("tsdb_store");
+
+        // Create required parameters
+        ShardId shardId = new ShardId("test-index", "test-uuid", 0);
+        IndexSettings indexSettings = IndexSettingsModule.newIndexSettings(
+            "test-index",
+            Settings.builder().put(IndexMetadata.SETTING_VERSION_CREATED, org.opensearch.Version.CURRENT).build()
+        );
+        Directory directory = newDirectory();
+        ShardLock shardLock = new DummyShardLock(shardId);
+        Store.OnClose onClose = Store.OnClose.EMPTY;
+        Path tempPath = createTempDir().resolve(shardId.getIndex().getUUID()).resolve(String.valueOf(shardId.id()));
+        ShardPath shardPath = new ShardPath(false, tempPath, tempPath, shardId);
+
+        // Create a mock directory factory
+        IndexStorePlugin.DirectoryFactory directoryFactory = mock(IndexStorePlugin.DirectoryFactory.class);
+
+        // Create store using factory with directoryFactory parameter
+        Store store = factory.newStore(shardId, indexSettings, directory, shardLock, onClose, shardPath, directoryFactory);
+
+        assertNotNull("Store should not be null", store);
+        assertThat("Store should be TSDBStore", store, instanceOf(TSDBStore.class));
+
+        // Clean up
+        store.close();
+        directory.close();
+    }
+
     public void testStoreFactoriesMapIsUnmodifiable() {
         Map<String, IndexStorePlugin.StoreFactory> storeFactories = plugin.getStoreFactories();
 

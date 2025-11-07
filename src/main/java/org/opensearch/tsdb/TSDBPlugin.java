@@ -259,6 +259,19 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
         ) throws IOException {
             return new TSDBStore(shardId, indexSettings, directory, shardLock, onClose, shardPath);
         }
+
+        @Override
+        public Store newStore(
+            ShardId shardId,
+            IndexSettings indexSettings,
+            Directory directory,
+            ShardLock shardLock,
+            Store.OnClose onClose,
+            ShardPath shardPath,
+            DirectoryFactory directoryFactory
+        ) throws IOException {
+            return new TSDBStore(shardId, indexSettings, directory, shardLock, onClose, shardPath, directoryFactory);
+        }
     }
 
     @Override
