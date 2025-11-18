@@ -1,6 +1,5 @@
 {
   "size" : 0,
-  "track_total_hits": -1,
   "query" : {
     "bool" : {
       "filter" : [
@@ -39,21 +38,31 @@
       "boost" : 1.0
     }
   },
+  "track_total_hits" : -1,
   "aggregations" : {
     "0_unfold" : {
       "time_series_unfold" : {
         "min_timestamp" : 1000000000,
         "max_timestamp" : 1001000000,
-        "step" : 100000,
+        "step" : 100000
+      }
+    },
+    "0_coordinator" : {
+      "coordinator_pipeline" : {
+        "buckets_path" : [ ],
         "stages" : [
           {
             "type" : "fallback_series_unary",
             "fallbackValue" : 1.0,
             "minTimestamp" : 1000000000,
             "maxTimestamp" : 1001000000,
-            "step" : 100000
+            "step" : 1000
           }
-        ]
+        ],
+        "references" : {
+          "0_unfold" : "0_unfold"
+        },
+        "inputReference" : "0_unfold"
       }
     }
   }

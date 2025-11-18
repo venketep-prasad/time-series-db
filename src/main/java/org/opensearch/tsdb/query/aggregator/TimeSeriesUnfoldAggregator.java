@@ -366,6 +366,38 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
         }
     }
 
+    /**
+     * Execute all pipeline stages on the given time series list.
+     * This method handles both normal stages and grouping stages appropriately.
+     * It can be called with an empty list to handle cases where no data was collected.
+     *
+     * @param timeSeries the input time series list (can be empty)
+     * @return the processed time series list after applying all stages
+     */
+    private List<TimeSeries> executeStages(List<TimeSeries> timeSeries) {
+        List<TimeSeries> processedTimeSeries = timeSeries;
+
+        if (stages != null && !stages.isEmpty()) {
+            // Process all stages except the last one normally
+            for (int i = 0; i < stages.size() - 1; i++) {
+                UnaryPipelineStage stage = stages.get(i);
+                processedTimeSeries = stage.process(processedTimeSeries);
+            }
+
+            // Handle the last stage specially if it's an AbstractGroupingStage
+            UnaryPipelineStage lastStage = stages.get(stages.size() - 1);
+            if (lastStage instanceof AbstractGroupingStage groupingStage) {
+                // Call process without materialization (materialize=false)
+                // The materialization will happen during the reduce phase
+                processedTimeSeries = groupingStage.process(processedTimeSeries, false);
+            } else {
+                processedTimeSeries = lastStage.process(processedTimeSeries);
+            }
+        }
+
+        return processedTimeSeries;
+    }
+
     @Override
     public void postCollection() throws IOException {
         // End collect phase timing and start postCollect timing
@@ -376,30 +408,16 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
         try {
             // Process each bucket's time series
+            // Note: This only processes buckets that have collected data (timeSeriesByBucket entries)
+            // Buckets with no data will be handled in buildAggregations()
             for (Map.Entry<Long, List<TimeSeries>> entry : timeSeriesByBucket.entrySet()) {
                 long bucketOrd = entry.getKey();
 
                 // Apply pipeline stages
-                List<TimeSeries> processedTimeSeries = entry.getValue();
-                debugInfo.inputSeriesCount += processedTimeSeries.size();
+                List<TimeSeries> inputTimeSeries = entry.getValue();
+                debugInfo.inputSeriesCount += inputTimeSeries.size();
 
-                if (stages != null && !stages.isEmpty()) {
-                    // Process all stages except the last one normally
-                    for (int i = 0; i < stages.size() - 1; i++) {
-                        UnaryPipelineStage stage = stages.get(i);
-                        processedTimeSeries = stage.process(processedTimeSeries);
-                    }
-
-                    // Handle the last stage specially if it's an AbstractGroupingStage
-                    UnaryPipelineStage lastStage = stages.get(stages.size() - 1);
-                    if (lastStage instanceof AbstractGroupingStage groupingStage) {
-                        // Call process without materialization (materialize=false)
-                        // The materialization will happen during the reduce phase
-                        processedTimeSeries = groupingStage.process(processedTimeSeries, false);
-                    } else {
-                        processedTimeSeries = lastStage.process(processedTimeSeries);
-                    }
-                }
+                List<TimeSeries> processedTimeSeries = executeStages(inputTimeSeries);
 
                 // Store the processed time series
                 processedTimeSeriesByBucket.put(bucketOrd, processedTimeSeries);
@@ -424,7 +442,19 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
             for (int i = 0; i < bucketOrds.length; i++) {
                 long bucketOrd = bucketOrds[i];
-                List<TimeSeries> timeSeriesList = processedTimeSeriesByBucket.getOrDefault(bucketOrd, List.of());
+
+                // Check if this bucket was already processed in postCollection()
+                // If not, it means no documents were collected for this bucket, but we still need to execute stages
+                // This is important for stages like FallbackSeriesUnaryStage that should generate results on empty input
+                List<TimeSeries> timeSeriesList;
+                if (processedTimeSeriesByBucket.containsKey(bucketOrd)) {
+                    // Bucket was already processed in postCollection
+                    timeSeriesList = processedTimeSeriesByBucket.get(bucketOrd);
+                } else {
+                    // Bucket was not processed (no data collected), execute stages on empty list
+                    timeSeriesList = executeStages(List.of());
+                }
+
                 debugInfo.outputSeriesCount += timeSeriesList.size();
 
                 // Get the last stage to determine the reduce behavior

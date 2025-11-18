@@ -304,12 +304,13 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
         validateChildCountExact(planNode, 1);
 
         // Create FallbackSeriesUnaryStage with query metadata (time range and step)
+        // Note: The step size uses FALLBACK_SERIES_STEP_MS for consistent granularity
         TimeRange timeRange = getAdjustedFetchTimeRange();
         FallbackSeriesUnaryStage fallbackStage = new FallbackSeriesUnaryStage(
             planNode.getConstantValue(),
             timeRange.start(),
             timeRange.end(),
-            params.step()
+            FallbackSeriesConstantPlanNode.FALLBACK_SERIES_STEP_MS
         );
         stageStack.add(fallbackStage);
 

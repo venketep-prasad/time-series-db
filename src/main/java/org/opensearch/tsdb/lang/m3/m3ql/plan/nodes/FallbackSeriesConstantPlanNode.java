@@ -27,6 +27,13 @@ import java.util.Locale;
  */
 public class FallbackSeriesConstantPlanNode extends M3PlanNode {
 
+    /**
+     * Default step size for fallback series in milliseconds.
+     * This is set to 1 second (1000ms) to ensure consistent granularity for fallback series,
+     * following current M3 practice.
+     */
+    public static final long FALLBACK_SERIES_STEP_MS = 1000;
+
     private final double constantValue;
 
     /**

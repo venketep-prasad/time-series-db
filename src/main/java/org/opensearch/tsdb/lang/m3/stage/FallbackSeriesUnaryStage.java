@@ -205,4 +205,17 @@ public class FallbackSeriesUnaryStage implements UnaryPipelineStage {
         return Long.hashCode(Double.doubleToLongBits(fallbackValue)) ^ Long.hashCode(minTimestamp) ^ Long.hashCode(maxTimestamp) ^ Long
             .hashCode(step);
     }
+
+    /**
+     * This stage must be executed only at the coordinator level.
+     * It cannot be executed in the UnfoldAggregator because it needs to see the complete
+     * aggregated results from all shards to determine if the input is truly empty
+     * before applying the fallback logic.
+     *
+     * @return true to indicate this is a coordinator-only stage
+     */
+    @Override
+    public boolean isCoordinatorOnly() {
+        return true;
+    }
 }
