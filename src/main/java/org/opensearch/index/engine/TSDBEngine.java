@@ -50,7 +50,7 @@ import org.opensearch.tsdb.core.head.Head;
 import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexManager;
 import org.opensearch.tsdb.core.index.live.LiveSeriesIndex;
 import org.opensearch.tsdb.core.mapping.Constants;
-import org.opensearch.tsdb.core.reader.MetricsDirectoryReaderReferenceManager;
+import org.opensearch.tsdb.core.reader.TSDBDirectoryReaderReferenceManager;
 import org.opensearch.tsdb.core.retention.RetentionFactory;
 import org.opensearch.tsdb.metrics.TSDBMetrics;
 
@@ -102,7 +102,7 @@ public class TSDBEngine extends Engine {
     private final Lock segmentInfosLock = new ReentrantLock(); // protect lastCommittedSegmentInfos access
     private Head head;
     private Path metricsStorePath;
-    private ReferenceManager<OpenSearchDirectoryReader> metricsReaderManager;
+    private ReferenceManager<OpenSearchDirectoryReader> tsdbReaderManager;
     private final MetadataStore metadataStore;
 
     private volatile SegmentInfos lastCommittedSegmentInfos;
@@ -186,7 +186,7 @@ public class TSDBEngine extends Engine {
             final Map<String, String> userData = lastCommittedSegmentInfos.getUserData();
             // Read history UUID directly from userData (avoid protected API)
             this.historyUUID = userData.get(Engine.HISTORY_UUID_KEY);
-            this.metricsReaderManager = getMetricsReaderManager();
+            this.tsdbReaderManager = getTsdbReaderManager();
             success = true;
         } finally {
             if (success == false) {
@@ -215,7 +215,7 @@ public class TSDBEngine extends Engine {
         metricsStorePath = null;
         head.close();
         translogManager.close();
-        metricsReaderManager.close();
+        tsdbReaderManager.close();
         metadataIndexWriter.close();
         super.close();
     }
@@ -1085,7 +1085,7 @@ public class TSDBEngine extends Engine {
      */
     @Override
     protected ReferenceManager<OpenSearchDirectoryReader> getReferenceManager(SearcherScope scope) {
-        return this.metricsReaderManager;
+        return this.tsdbReaderManager;
     }
 
     /**
@@ -1240,9 +1240,9 @@ public class TSDBEngine extends Engine {
      * Creates and returns a metrics directory reader reference manager that aggregates
      * readers from both the live series index and closed chunk indexes.
      */
-    private ReferenceManager<OpenSearchDirectoryReader> getMetricsReaderManager() {
+    private ReferenceManager<OpenSearchDirectoryReader> getTsdbReaderManager() {
         try {
-            return new MetricsDirectoryReaderReferenceManager(
+            return new TSDBDirectoryReaderReferenceManager(
                 head.getLiveSeriesIndex().getDirectoryReaderManager(),
                 closedChunkIndexManager,
                 head.getChunkReader(),

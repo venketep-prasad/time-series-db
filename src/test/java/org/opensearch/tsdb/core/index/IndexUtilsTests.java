@@ -14,7 +14,7 @@ import org.apache.lucene.util.BytesRef;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -28,9 +28,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
         List<String> expectedIndexSet = expectedLabels.toIndexSet().stream().toList();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(expectedIndexSet);
 
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertEquals("Labels should contain expected labels", expectedLabels, labels);
@@ -38,9 +38,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
 
     public void testLabelsForDocWithEmptyLabels() throws IOException {
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(Arrays.asList());
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertTrue("Labels should be empty", labels.isEmpty());
@@ -48,9 +48,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
     }
 
     public void testLabelsForDocWithNullDocValues() throws IOException {
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(null);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(null);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertTrue("Labels should be empty when doc values is null", labels.isEmpty());
@@ -64,9 +64,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
             }
         };
 
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(999, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(999, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertTrue("Labels should be empty when document not found", labels.isEmpty());
@@ -76,9 +76,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
         // Test that malformed labels with empty values throw IOException
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(Arrays.asList("missing_value:"));
 
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
         Labels expectedLabels = ByteLabels.fromStrings("missing_value", "");
         assertEquals("Labels should contain expected labels", expectedLabels, labels);
         assertEquals("", labels.get("missing_value"));
@@ -97,9 +97,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
         List<String> expectedIndexSet = expectedLabels.toIndexSet().stream().toList();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(expectedIndexSet);
 
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertEquals("Labels should contain expected labels", expectedLabels, labels);
@@ -110,9 +110,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
 
         // Test no colon
         MockSortedSetDocValues labelsDocValues1 = new MockSortedSetDocValues(Arrays.asList("malformed_no_colon"));
-        MockMetricsDocValues metricsDocValues1 = new MockMetricsDocValues(labelsDocValues1);
+        MockTSDBDocValues tsdbDocValues1 = new MockTSDBDocValues(labelsDocValues1);
 
-        var exception1 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, metricsDocValues1); });
+        var exception1 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, tsdbDocValues1); });
         assertTrue(
             "Exception should mention malformed label, but got: " + exception1.getMessage(),
             exception1.getMessage().contains("Invalid key value pair: malformed_no_colon")
@@ -120,16 +120,16 @@ public class IndexUtilsTests extends OpenSearchTestCase {
 
         // Test colon at start
         MockSortedSetDocValues labelsDocValues2 = new MockSortedSetDocValues(Arrays.asList(":missing_key"));
-        MockMetricsDocValues metricsDocValues2 = new MockMetricsDocValues(labelsDocValues2);
+        MockTSDBDocValues tsdbDocValues2 = new MockTSDBDocValues(labelsDocValues2);
 
-        var exception2 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, metricsDocValues2); });
+        var exception2 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, tsdbDocValues2); });
         assertTrue("Exception should mention malformed label", exception2.getMessage().contains("Invalid key value pair: :missing_key"));
 
         // Test empty string
         MockSortedSetDocValues labelsDocValues3 = new MockSortedSetDocValues(Arrays.asList(""));
-        MockMetricsDocValues metricsDocValues3 = new MockMetricsDocValues(labelsDocValues3);
+        MockTSDBDocValues tsdbDocValues3 = new MockTSDBDocValues(labelsDocValues3);
 
-        var exception3 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, metricsDocValues3); });
+        var exception3 = assertThrows(IllegalArgumentException.class, () -> { IndexUtils.labelsForDoc(0, tsdbDocValues3); });
         assertTrue("Exception should mention malformed label", exception3.getMessage().contains("Invalid key value pair: "));
     }
 
@@ -137,9 +137,9 @@ public class IndexUtilsTests extends OpenSearchTestCase {
         Labels expectedLabels = ByteLabels.fromStrings("single", "value");
         List<String> expectedIndexSet = expectedLabels.toIndexSet().stream().toList();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(expectedIndexSet);
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertEquals("Labels should contain expected labels", expectedLabels, labels);
@@ -159,18 +159,18 @@ public class IndexUtilsTests extends OpenSearchTestCase {
         List<String> expectedIndexSet = expectedLabels.toIndexSet().stream().toList();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues(expectedIndexSet);
 
-        MockMetricsDocValues metricsDocValues = new MockMetricsDocValues(labelsDocValues);
+        MockTSDBDocValues tsdbDocValues = new MockTSDBDocValues(labelsDocValues);
 
-        Labels labels = IndexUtils.labelsForDoc(0, metricsDocValues);
+        Labels labels = IndexUtils.labelsForDoc(0, tsdbDocValues);
 
         assertNotNull("Labels should not be null", labels);
         assertEquals("Labels should contain expected labels", expectedLabels, labels);
     }
 
-    static class MockMetricsDocValues extends MetricsDocValues {
+    static class MockTSDBDocValues extends TSDBDocValues {
         private final SortedSetDocValues labelsDocValues;
 
-        public MockMetricsDocValues(SortedSetDocValues labelsDocValues) {
+        public MockTSDBDocValues(SortedSetDocValues labelsDocValues) {
             super((NumericDocValues) null, labelsDocValues);
             this.labelsDocValues = labelsDocValues;
         }

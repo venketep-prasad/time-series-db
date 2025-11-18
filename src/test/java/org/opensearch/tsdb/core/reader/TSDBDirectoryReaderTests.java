@@ -55,10 +55,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for MetricsDirectoryReader
+ * Unit tests for TSDBDirectoryReader
  */
 @SuppressForbidden(reason = "reference counting is required here")
-public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
+public class TSDBDirectoryReaderTests extends OpenSearchTestCase {
 
     private Directory liveDirectory;
     private Directory closedDirectory1;
@@ -69,7 +69,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
     private DirectoryReader closedReader1;
     private DirectoryReader closedReader2;
     private DirectoryReader closedReader3;
-    private MetricsDirectoryReader metricsReader;
+    private TSDBDirectoryReader tsdbDirectoryReader;
     private ClosedChunkIndexManager closedChunkIndexManager;
     private MemChunkReader memChunkReader;
     private ReaderManager closedReaderManager1;
@@ -144,8 +144,8 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     @After
     public void tearDown() throws Exception {
-        if (metricsReader != null) {
-            metricsReader.close();
+        if (tsdbDirectoryReader != null) {
+            tsdbDirectoryReader.close();
         }
         if (liveWriter != null) {
             liveWriter.close();
@@ -184,12 +184,12 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         int initialLiveRefCount = liveReader.getRefCount();
         int initialClosedRefCount = closedReader1.getRefCount();
 
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
 
         // Reference counts should be incremented by the constructor
         assertEquals("Live reader reference count should be incremented by 1", initialLiveRefCount + 1, liveReader.getRefCount());
         assertEquals("Closed reader reference count should be incremented by 1", initialClosedRefCount + 1, closedReader1.getRefCount());
-        assertEquals("Should have 1 closed chunk reader", 1, metricsReader.getClosedChunkReadersCount());
+        assertEquals("Should have 1 closed chunk reader", 1, tsdbDirectoryReader.getClosedChunkReadersCount());
     }
 
     @Test
@@ -199,7 +199,11 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         int initialClosed2RefCount = closedReader2.getRefCount();
         int initialClosed3RefCount = closedReader3.getRefCount();
 
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         // Reference counts should be incremented by the constructor
         assertEquals("Live reader reference count should be incremented by 1", initialLiveRefCount + 1, liveReader.getRefCount());
@@ -218,12 +222,16 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             initialClosed3RefCount + 1,
             closedReader3.getRefCount()
         );
-        assertEquals("Should have 3 closed chunk readers", 3, metricsReader.getClosedChunkReadersCount());
+        assertEquals("Should have 3 closed chunk readers", 3, tsdbDirectoryReader.getClosedChunkReadersCount());
     }
 
     @Test
     public void testLeavesCombination() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         // Get expected leaf count
         int expectedLiveLeaves = liveReader.leaves().size();
@@ -232,42 +240,54 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         int expectedClosed3Leaves = closedReader3.leaves().size();
         int expectedTotalLeaves = expectedLiveLeaves + expectedClosed1Leaves + expectedClosed2Leaves + expectedClosed3Leaves;
 
-        List<LeafReaderContext> actualLeaves = metricsReader.leaves();
+        List<LeafReaderContext> actualLeaves = tsdbDirectoryReader.leaves();
 
         assertEquals("Combined leaves should equal sum of all readers", expectedTotalLeaves, actualLeaves.size());
     }
 
     @Test
     public void testMaxDocCombination() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         int expectedMaxDoc = liveReader.maxDoc() + closedReader1.maxDoc() + closedReader2.maxDoc() + closedReader3.maxDoc();
-        int actualMaxDoc = metricsReader.maxDoc();
+        int actualMaxDoc = tsdbDirectoryReader.maxDoc();
 
         assertEquals("MaxDoc should be sum of all readers", expectedMaxDoc, actualMaxDoc);
     }
 
     @Test
     public void testNumDocsCombination() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         int expectedNumDocs = liveReader.numDocs() + closedReader1.numDocs() + closedReader2.numDocs() + closedReader3.numDocs();
-        int actualNumDocs = metricsReader.numDocs();
+        int actualNumDocs = tsdbDirectoryReader.numDocs();
 
         assertEquals("NumDocs should be sum of all readers", expectedNumDocs, actualNumDocs);
     }
 
     @Test
     public void testVersionCombination() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
-        // With the new versioning system, MetricsDirectoryReader uses its own version counter
+        // With the new versioning system, TSDBDirectoryReader uses its own version counter
         // Default constructor without version parameter should initialize to 0
-        long actualVersion = metricsReader.getVersion();
+        long actualVersion = tsdbDirectoryReader.getVersion();
         assertEquals("Version should be 0 for default constructor", 0L, actualVersion);
 
         // Test with explicit version
-        MetricsDirectoryReader versionedReader = new MetricsDirectoryReader(
+        TSDBDirectoryReader versionedReader = new TSDBDirectoryReader(
             liveReader,
             Arrays.asList(closedReader1, closedReader2, closedReader3),
             memChunkReader,
@@ -279,13 +299,17 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     @Test
     public void testIsCurrentCombination() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         boolean expectedIsCurrent = liveReader.isCurrent()
             && closedReader1.isCurrent()
             && closedReader2.isCurrent()
             && closedReader3.isCurrent();
-        boolean actualIsCurrent = metricsReader.isCurrent();
+        boolean actualIsCurrent = tsdbDirectoryReader.isCurrent();
 
         assertEquals("IsCurrent should be AND of all readers", expectedIsCurrent, actualIsCurrent);
     }
@@ -306,8 +330,12 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         assertEquals("Initial reference count should be 1 for second closed reader", 1, initialClosed2RefCount);
         assertEquals("Initial reference count should be 1 for third closed reader", 1, initialClosed3RefCount);
 
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
-        assertEquals("Initial reference count should be 1", 1, metricsReader.getRefCount());
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
+        assertEquals("Initial reference count should be 1", 1, tsdbDirectoryReader.getRefCount());
         assertEquals("Live reader reference count should be incremented by 1", initialLiveRefCount + 1, liveReader.getRefCount());
         assertEquals(
             "First closed reader reference count should be incremented by 1",
@@ -326,8 +354,8 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         );
 
         // Test incRef
-        metricsReader.incRef();
-        assertEquals("Reference count should be 2 after incRef", 2, metricsReader.getRefCount());
+        tsdbDirectoryReader.incRef();
+        assertEquals("Reference count should be 2 after incRef", 2, tsdbDirectoryReader.getRefCount());
         assertEquals("Live reader reference count should remain unchanged", initialLiveRefCount + 1, liveReader.getRefCount());
         assertEquals(
             "First closed reader reference count should remain unchanged",
@@ -346,13 +374,13 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         );
 
         // Test tryIncRef
-        assertTrue("tryIncRef should return true for open reader", metricsReader.tryIncRef());
-        assertEquals("Reference count should be 3 after tryIncRef", 3, metricsReader.getRefCount());
+        assertTrue("tryIncRef should return true for open reader", tsdbDirectoryReader.tryIncRef());
+        assertEquals("Reference count should be 3 after tryIncRef", 3, tsdbDirectoryReader.getRefCount());
 
         // Test decRef (bring it back to 1)
-        metricsReader.decRef();
-        metricsReader.decRef();
-        assertEquals("Reference count should be 1 after two decRefs", 1, metricsReader.getRefCount());
+        tsdbDirectoryReader.decRef();
+        tsdbDirectoryReader.decRef();
+        assertEquals("Reference count should be 1 after two decRefs", 1, tsdbDirectoryReader.getRefCount());
         assertEquals("Live reader reference count should remain unchanged", initialLiveRefCount + 1, liveReader.getRefCount());
         assertEquals(
             "First closed reader reference count should remain unchanged",
@@ -370,8 +398,8 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             closedReader3.getRefCount()
         );
 
-        metricsReader.close();
-        assertEquals("Reference count should be 0 after close", 0, metricsReader.getRefCount());
+        tsdbDirectoryReader.close();
+        assertEquals("Reference count should be 0 after close", 0, tsdbDirectoryReader.getRefCount());
         assertEquals("Live reader reference count should be decremented by 1", initialLiveRefCount, liveReader.getRefCount());
         assertEquals("First closed reader reference count should be decremented by 1", initialClosed1RefCount, closedReader1.getRefCount());
         assertEquals(
@@ -391,7 +419,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             int initialClosed2RefCount = closedReader2.getRefCount();
             int initialClosed3RefCount = closedReader3.getRefCount();
 
-            metricsReader = new MetricsDirectoryReader(
+            tsdbDirectoryReader = new TSDBDirectoryReader(
                 liveReader,
                 Arrays.asList(closedReader1, closedReader2, closedReader3),
                 memChunkReader
@@ -415,26 +443,26 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
                 closedReader3.getRefCount()
             );
 
-            metricsReader.close();
+            tsdbDirectoryReader.close();
 
-            // After closing MetricsDirectoryReader, the underlying readers ref counts should be decremented back to original
+            // After closing TSDBDirectoryReader, the underlying readers ref counts should be decremented back to original
             assertEquals(
-                "Live reader ref count should be back to initial value after MetricsDirectoryReader is closed",
+                "Live reader ref count should be back to initial value after TSDBDirectoryReader is closed",
                 initialLiveRefCount,
                 liveReader.getRefCount()
             );
             assertEquals(
-                "First closed reader ref count should be back to initial value after MetricsDirectoryReader is closed",
+                "First closed reader ref count should be back to initial value after TSDBDirectoryReader is closed",
                 initialClosed1RefCount,
                 closedReader1.getRefCount()
             );
             assertEquals(
-                "Second closed reader ref count should be back to initial value after MetricsDirectoryReader is closed",
+                "Second closed reader ref count should be back to initial value after TSDBDirectoryReader is closed",
                 initialClosed2RefCount,
                 closedReader2.getRefCount()
             );
             assertEquals(
-                "Third closed reader ref count should be back to initial value after MetricsDirectoryReader is closed",
+                "Third closed reader ref count should be back to initial value after TSDBDirectoryReader is closed",
                 initialClosed3RefCount,
                 closedReader3.getRefCount()
             );
@@ -450,25 +478,29 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             Arrays.asList(closedReaderManager1, closedReaderManager2, closedReaderManager3)
         );
 
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         // Test when no changes occurred
-        DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+        DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
 
         assertNull("Should return null when no changes occurred", changedReader);
     }
 
     @Test
     public void testDoOpenIfChangedWithLiveIndexChanges() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Verify initial document count
-        int initialDocCount = metricsReader.numDocs();
+        int initialDocCount = tsdbDirectoryReader.numDocs();
         assertEquals("Should have initial documents from live and closed indexes", 6, initialDocCount); // 2 live + 2 closed1 + 2 closed2 =
                                                                                                         // 6
 
         // Search for documents initially
-        IndexSearcher initialSearcher = new IndexSearcher(metricsReader);
+        IndexSearcher initialSearcher = new IndexSearcher(tsdbDirectoryReader);
         TopDocs initialResults = initialSearcher.search(new MatchAllDocsQuery(), 10);
         assertEquals("Initial search should find all documents", initialDocCount, initialResults.totalHits.value());
 
@@ -478,13 +510,13 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         // No need to liveWriter.commit(); since DirectoryReader for liveReader should be an NRT reader that reflects live changes
 
         // Test when live index changes (new document added)
-        DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+        DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
 
         assertNotNull("Should return new reader when live index changes", changedReader);
-        assertTrue("Changed reader should be instance of MetricsDirectoryReader", changedReader instanceof MetricsDirectoryReader);
+        assertTrue("Changed reader should be instance of TSDBDirectoryReader", changedReader instanceof TSDBDirectoryReader);
 
         // Verify the new reader sees the additional document
-        MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) changedReader;
+        TSDBDirectoryReader newMetricsReader = (TSDBDirectoryReader) changedReader;
         int newDocCount = newMetricsReader.numDocs();
         assertEquals("New reader should have one additional document", initialDocCount + 1, newDocCount);
 
@@ -499,43 +531,47 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         );
 
         // Clean up the changed reader
-        if (changedReader != null && changedReader != metricsReader) {
+        if (changedReader != null && changedReader != tsdbDirectoryReader) {
             changedReader.close();
         }
     }
 
     @Test(expected = UnsupportedEncodingException.class)
     public void testDoOpenIfChangedWithIndexCommitThrowsException() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
-        metricsReader.doOpenIfChanged(null); // IndexCommit parameter
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
+        tsdbDirectoryReader.doOpenIfChanged(null); // IndexCommit parameter
     }
 
     @Test(expected = UnsupportedEncodingException.class)
     public void testDoOpenIfChangedWithIndexWriterThrowsException() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
-        metricsReader.doOpenIfChanged(null, false); // IndexWriter parameter
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
+        tsdbDirectoryReader.doOpenIfChanged(null, false); // IndexWriter parameter
     }
 
     @Test(expected = UnsupportedOperationException.class)
     public void testGetIndexCommitThrowsException() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
-        metricsReader.getIndexCommit();
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1), memChunkReader);
+        tsdbDirectoryReader.getIndexCommit();
     }
 
     @Test
     public void testGetReaderCacheHelperReturnsNull() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
-        assertNull("CacheHelper should return null", metricsReader.getReaderCacheHelper());
+        assertNull("CacheHelper should return null", tsdbDirectoryReader.getReaderCacheHelper());
     }
 
     @Test
     public void testMultipleCloseCalls() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
         // Close multiple times should not throw exceptions
-        metricsReader.close();
-        metricsReader.close(); // Should be safe to call multiple times
+        tsdbDirectoryReader.close();
+        tsdbDirectoryReader.close(); // Should be safe to call multiple times
 
         // Verify underlying readers are only decremented once
         assertEquals("Live reader should only be decremented once", 1, liveReader.getRefCount());
@@ -575,7 +611,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         DirectoryReader emptyClosedReader3 = DirectoryReader.open(emptyClosedDirectory3);
 
         try {
-            MetricsDirectoryReader emptyMetricsReader = new MetricsDirectoryReader(
+            TSDBDirectoryReader emptyMetricsReader = new TSDBDirectoryReader(
                 emptyLiveReader,
                 Arrays.asList(emptyClosedReader1, emptyClosedReader2, emptyClosedReader3),
                 memChunkReader
@@ -601,7 +637,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     @Test
     public void testConcurrentAccess() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Test that multiple incRef/decRef operations work correctly
         List<Thread> threads = new ArrayList<>();
@@ -609,10 +645,10 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         for (int i = 0; i < 10; i++) {
             Thread thread = new Thread(() -> {
                 try {
-                    metricsReader.incRef();
+                    tsdbDirectoryReader.incRef();
                     // Do some work
                     Thread.sleep(10);
-                    metricsReader.decRef();
+                    tsdbDirectoryReader.decRef();
                 } catch (Exception e) {
                     fail("Concurrent access should not throw exceptions: " + e.getMessage());
                 }
@@ -632,9 +668,9 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         }
 
         // Reference count should be back to 1
-        assertEquals("Reference count should be back to 1 after all threads complete", 1, metricsReader.getRefCount());
+        assertEquals("Reference count should be back to 1 after all threads complete", 1, tsdbDirectoryReader.getRefCount());
 
-        // Note: Underlying readers' reference counts are independent and managed by MetricsDirectoryReader
+        // Note: Underlying readers' reference counts are independent and managed by TSDBDirectoryReader
         // They should have been incremented by 1 during construction
         // These assertions verify the underlying readers still have their incremented counts
         assertTrue("Live reader should have positive reference count", liveReader.getRefCount() > 0);
@@ -644,28 +680,32 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     @Test
     public void testDirectory() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // The directory should be a CompositeDirectory
-        assertNotNull("Directory should not be null", metricsReader.directory());
-        assertTrue("Directory should be CompositeDirectory instance", metricsReader.directory() instanceof CompositeDirectory);
+        assertNotNull("Directory should not be null", tsdbDirectoryReader.directory());
+        assertTrue("Directory should be CompositeDirectory instance", tsdbDirectoryReader.directory() instanceof CompositeDirectory);
     }
 
     @Test
     public void testTryIncRefAfterClose() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
-        metricsReader.close();
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader.close();
 
         // tryIncRef should return false for closed reader
-        assertFalse("tryIncRef should return false for closed reader", metricsReader.tryIncRef());
+        assertFalse("tryIncRef should return false for closed reader", tsdbDirectoryReader.tryIncRef());
     }
 
     @Test
     public void testMatchAllDocsQueryWithThreeClosedReaders() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
-        // Create an IndexSearcher using the MetricsDirectoryReader
-        IndexSearcher searcher = new IndexSearcher(metricsReader);
+        // Create an IndexSearcher using the TSDBDirectoryReader
+        IndexSearcher searcher = new IndexSearcher(tsdbDirectoryReader);
 
         // Execute a MatchAllDocsQuery to get all documents
         MatchAllDocsQuery matchAllQuery = new MatchAllDocsQuery();
@@ -688,17 +728,25 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     @Test
     public void testGetClosedChunkReadersCountWithThreeReaders() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
-        assertEquals("Should have 3 closed chunk readers", 3, metricsReader.getClosedChunkReadersCount());
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
+        assertEquals("Should have 3 closed chunk readers", 3, tsdbDirectoryReader.getClosedChunkReadersCount());
     }
 
     @Test
     public void testDuplicateChunkRangeQuery() throws IOException {
         // Test the duplicate chunk scenario where both live and closed indexes contain chunks for the same time range
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2, closedReader3), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(
+            liveReader,
+            Arrays.asList(closedReader1, closedReader2, closedReader3),
+            memChunkReader
+        );
 
-        // Create an IndexSearcher using the MetricsDirectoryReader
-        IndexSearcher searcher = new IndexSearcher(metricsReader);
+        // Create an IndexSearcher using the TSDBDirectoryReader
+        IndexSearcher searcher = new IndexSearcher(tsdbDirectoryReader);
 
         // Test 2: Combined query with label filter "service=db,env=prod" AND time range 2000000L-2999999L
         // This should find exactly 2 documents that match both the label and the time range
@@ -729,16 +777,16 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         // This test verifies that the doClose method properly handles multiple readers
         // and that it can complete successfully under normal conditions
 
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Verify initial state
-        assertEquals("Should have reference count of 1", 1, metricsReader.getRefCount());
+        assertEquals("Should have reference count of 1", 1, tsdbDirectoryReader.getRefCount());
 
         // Close should complete successfully
-        metricsReader.close();
+        tsdbDirectoryReader.close();
 
         // Verify closed state
-        assertEquals("Should have reference count of 0 after close", 0, metricsReader.getRefCount());
+        assertEquals("Should have reference count of 0 after close", 0, tsdbDirectoryReader.getRefCount());
 
         // Verify underlying readers are properly decremented
         assertEquals("Live reader should have original ref count", 1, liveReader.getRefCount());
@@ -746,21 +794,21 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         assertEquals("Closed reader 2 should have original ref count", 1, closedReader2.getRefCount());
 
         // Multiple close calls should be safe
-        metricsReader.close(); // Should not throw exception
+        tsdbDirectoryReader.close(); // Should not throw exception
     }
 
     /**
      * Validates that doOpenIfChanged() correctly manages references in the success path.
      *
      * Tests that when the live index changes:
-     * - A new MetricsDirectoryReader is created
+     * - A new TSDBDirectoryReader is created
      * - Reference counts are properly managed for new and reused readers
      * - Closing the new reader doesn't leak references
      *
      */
     @Test
     public void testDoOpenIfChangedSuccessPath() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Record initial refCounts
         int initialLiveRefCount = liveReader.getRefCount();
@@ -771,14 +819,14 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         liveWriter.addDocument(getLiveDoc("service=test,env=dev", 1004L, 4000000L, 4999999L));
 
         // Open changed reader
-        DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+        DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
 
         assertNotNull("Should return new reader when live index changes", changedReader);
-        assertTrue("Changed reader should be MetricsDirectoryReader", changedReader instanceof MetricsDirectoryReader);
+        assertTrue("Changed reader should be TSDBDirectoryReader", changedReader instanceof TSDBDirectoryReader);
 
         // The new reader should see the additional document
-        MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) changedReader;
-        assertEquals("New reader should see the new document", metricsReader.numDocs() + 1, newMetricsReader.numDocs());
+        TSDBDirectoryReader newMetricsReader = (TSDBDirectoryReader) changedReader;
+        assertEquals("New reader should see the new document", tsdbDirectoryReader.numDocs() + 1, newMetricsReader.numDocs());
 
         // Clean up the new reader
         newMetricsReader.close();
@@ -792,7 +840,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
 
     /**
      * DirectoryReader wrapper that can be configured to throw IOException during refresh.
-     * Used to test error handling and cleanup logic in MetricsDirectoryReader.doOpenIfChanged().
+     * Used to test error handling and cleanup logic in TSDBDirectoryReader.doOpenIfChanged().
      */
     private static class ThrowingOnRefreshDirectoryReader extends DirectoryReader {
         private final DirectoryReader delegate;
@@ -866,7 +914,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         ThrowingOnRefreshDirectoryReader throwingClosedChunkReader1 = new ThrowingOnRefreshDirectoryReader(closedReader1);
         ThrowingOnRefreshDirectoryReader throwingClosedChunkReader2 = new ThrowingOnRefreshDirectoryReader(closedReader2);
 
-        metricsReader = new MetricsDirectoryReader(
+        tsdbDirectoryReader = new TSDBDirectoryReader(
             liveReader,
             Arrays.asList(throwingClosedChunkReader1, throwingClosedChunkReader2),
             memChunkReader
@@ -882,7 +930,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         throwingClosedChunkReader2.enableThrowOnRefresh();
 
         try {
-            DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+            DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
             if (changedReader != null) {
                 changedReader.close();
             }
@@ -902,8 +950,8 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             initialClosedChunkReader2RefCount,
             throwingClosedChunkReader2.getRefCount()
         );
-        assertEquals("Original reader should be usable", 1, metricsReader.getRefCount());
-        assertTrue("Original reader should have docs", metricsReader.numDocs() > 0);
+        assertEquals("Original reader should be usable", 1, tsdbDirectoryReader.getRefCount());
+        assertTrue("Original reader should have docs", tsdbDirectoryReader.numDocs() > 0);
 
         throwingClosedChunkReader1.close();
         throwingClosedChunkReader2.close();
@@ -913,21 +961,21 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
      * Verifies that doOpenIfChanged properly manages reference counts in the success path.
      *
      * <p>This test validates that newly created readers are properly decRef'd after being passed to
-     * the MetricsDirectoryReader constructor, ensuring only the MDR owns them and preventing reference leaks.
+     * the TSDBDirectoryReader constructor, ensuring only the MDR owns them and preventing reference leaks.
      *
      * <p>Expected reference counting flow:
      * <ol>
      *   <li>openIfChanged() returns new reader with refCount=1</li>
-     *   <li>MetricsDirectoryReader constructor incRef's to refCount=2</li>
+     *   <li>TSDBDirectoryReader constructor incRef's to refCount=2</li>
      *   <li>doOpenIfChanged success path decRef's back to refCount=1</li>
-     *   <li>Only MetricsDirectoryReader owns the new readers</li>
+     *   <li>Only TSDBDirectoryReader owns the new readers</li>
      * </ol>
      *
      * @throws IOException if an error occurs during reader operations
      */
     @Test
     public void testDoOpenIfChangedProperlyDecRefsNewReaders() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Capture initial reference counts before refresh
         DirectoryReader initialLiveReader = liveReader;
@@ -940,15 +988,15 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         liveWriter.commit();
 
         // Refresh creates new live reader but reuses closed readers
-        DirectoryReader changedMetricsReader = DirectoryReader.openIfChanged(metricsReader);
+        DirectoryReader changedMetricsReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
 
         assertNotNull("Changed reader should not be null after live index changes", changedMetricsReader);
-        assertTrue("Changed reader should be MetricsDirectoryReader", changedMetricsReader instanceof MetricsDirectoryReader);
-        assertEquals("New reader should have one more document", metricsReader.numDocs() + 1, changedMetricsReader.numDocs());
+        assertTrue("Changed reader should be TSDBDirectoryReader", changedMetricsReader instanceof TSDBDirectoryReader);
+        assertEquals("New reader should have one more document", tsdbDirectoryReader.numDocs() + 1, changedMetricsReader.numDocs());
 
         // Core assertion: Verify new live reader has refCount=1 (owned only by new MDR)
         try {
-            java.lang.reflect.Field liveReaderField = MetricsDirectoryReader.class.getDeclaredField("liveSeriesIndexDirectoryReader");
+            java.lang.reflect.Field liveReaderField = TSDBDirectoryReader.class.getDeclaredField("liveSeriesIndexDirectoryReader");
             liveReaderField.setAccessible(true);
             DirectoryReader newLiveReader = (DirectoryReader) liveReaderField.get(changedMetricsReader);
 
@@ -969,7 +1017,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         assertEquals("Closed reader 2 refCount incremented (reused by both MDRs)", initialClosed2RefCount + 1, closedReader2.getRefCount());
 
         // Close old MDR and verify reference counts
-        metricsReader.close();
+        tsdbDirectoryReader.close();
 
         assertEquals(
             "Original live reader refCount decremented after old MDR closed",
@@ -993,7 +1041,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             closedReader2.getRefCount()
         );
 
-        metricsReader = null;
+        tsdbDirectoryReader = null;
     }
 
     /**
@@ -1002,7 +1050,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
      */
     @Test
     public void testDoOpenIfChangedProperlyDecRefsNewClosedChunkReaders() throws IOException {
-        metricsReader = new MetricsDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
+        tsdbDirectoryReader = new TSDBDirectoryReader(liveReader, Arrays.asList(closedReader1, closedReader2), memChunkReader);
 
         // Capture initial reference counts before refresh
         DirectoryReader initialClosedReader1 = closedReader1;
@@ -1017,15 +1065,15 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         closedWriter1.close();
 
         // Refresh creates new closed chunk reader 1 but reuses live reader and closed reader 2
-        DirectoryReader changedMetricsReader = DirectoryReader.openIfChanged(metricsReader);
+        DirectoryReader changedMetricsReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
 
         assertNotNull("Changed reader should not be null after closed chunk index changes", changedMetricsReader);
-        assertTrue("Changed reader should be MetricsDirectoryReader", changedMetricsReader instanceof MetricsDirectoryReader);
-        assertEquals("New reader should have one more document", metricsReader.numDocs() + 1, changedMetricsReader.numDocs());
+        assertTrue("Changed reader should be TSDBDirectoryReader", changedMetricsReader instanceof TSDBDirectoryReader);
+        assertEquals("New reader should have one more document", tsdbDirectoryReader.numDocs() + 1, changedMetricsReader.numDocs());
 
         // Core assertion: Verify new closed chunk reader 1 has refCount=1 (owned only by new MDR)
         try {
-            java.lang.reflect.Field closedReadersField = MetricsDirectoryReader.class.getDeclaredField("closedChunkIndexDirectoryReaders");
+            java.lang.reflect.Field closedReadersField = TSDBDirectoryReader.class.getDeclaredField("closedChunkIndexDirectoryReaders");
             closedReadersField.setAccessible(true);
             @SuppressWarnings("unchecked")
             List<DirectoryReader> newClosedReaders = (List<DirectoryReader>) closedReadersField.get(changedMetricsReader);
@@ -1051,7 +1099,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         assertEquals("Closed reader 2 refCount incremented (reused by both MDRs)", initialClosed2RefCount + 1, closedReader2.getRefCount());
 
         // Close old MDR and verify reference counts
-        metricsReader.close();
+        tsdbDirectoryReader.close();
 
         assertEquals(
             "Original closed reader 1 refCount decremented after old MDR closed",
@@ -1071,7 +1119,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
             closedReader2.getRefCount()
         );
 
-        metricsReader = null;
+        tsdbDirectoryReader = null;
     }
 
     /**
@@ -1083,7 +1131,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         ThrowingOnRefreshDirectoryReader throwingClosedChunkReader1 = new ThrowingOnRefreshDirectoryReader(closedReader1);
         ThrowingOnRefreshDirectoryReader throwingClosedChunkReader2 = new ThrowingOnRefreshDirectoryReader(closedReader2);
 
-        metricsReader = new MetricsDirectoryReader(
+        tsdbDirectoryReader = new TSDBDirectoryReader(
             liveReader,
             Arrays.asList(throwingClosedChunkReader1, throwingClosedChunkReader2),
             memChunkReader
@@ -1096,7 +1144,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         throwingClosedChunkReader2.enableThrowOnRefresh();
 
         try {
-            DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+            DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
             if (changedReader != null) {
                 changedReader.close();
             }
@@ -1218,7 +1266,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         ThrowingOnCloseDirectoryReader throwingClosedChunkReader1 = new ThrowingOnCloseDirectoryReader(closedReader1);
         ThrowingOnRefreshDirectoryReader throwingClosedChunkReader2 = new ThrowingOnRefreshDirectoryReader(closedReader2);
 
-        metricsReader = new MetricsDirectoryReader(
+        tsdbDirectoryReader = new TSDBDirectoryReader(
             throwingLiveReader,
             Arrays.asList(throwingClosedChunkReader1, throwingClosedChunkReader2),
             memChunkReader
@@ -1237,7 +1285,7 @@ public class MetricsDirectoryReaderTests extends OpenSearchTestCase {
         throwingClosedChunkReader2.enableThrowOnRefresh();
 
         try {
-            DirectoryReader changedReader = DirectoryReader.openIfChanged(metricsReader);
+            DirectoryReader changedReader = DirectoryReader.openIfChanged(tsdbDirectoryReader);
             if (changedReader != null) {
                 changedReader.close();
             }

@@ -305,8 +305,8 @@ public class RestM3QLAction extends BaseRestHandler {
         SearchRequest searchRequest = new SearchRequest();
         searchRequest.source(searchSourceBuilder);
 
-        // Disable query cache explicitly as TSDB MetricsDirectoryReader does not support caching
-        // TODO: Remove this once TSDB MetricsDirectoryReader supports caching
+        // Disable query cache explicitly as TSDB TSDBDirectoryReader does not support caching
+        // TODO: Remove this once TSDB TSDBDirectoryReader supports caching
         searchRequest.requestCache(false);
 
         // Set indices if specified

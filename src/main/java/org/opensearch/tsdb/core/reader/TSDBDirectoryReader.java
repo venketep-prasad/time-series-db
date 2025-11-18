@@ -31,30 +31,30 @@ import java.util.stream.Stream;
  * A custom DirectoryReader that directly extends {@link DirectoryReader} and provides
  * a unified view of both LiveSeriesIndex and multiple ClosedChunkIndex instances for tsdb query coordination.
  * Life cycle :
- * MetricsDirectoryReader is managed by {@link MetricsDirectoryReaderReferenceManager} created in MetricsEngine
- * MetricsDirectoryReader is instantiated when {@link MetricsDirectoryReaderReferenceManager} is created during MetricsEngine start up
- * MetricsDirectoryReader is refreshed when {@link MetricsDirectoryReaderReferenceManager#refreshIfNeeded(OpenSearchDirectoryReader)} is called
- * MetricsDirectoryReader is closed when
- * 1) During MetricsEngine refresh,  if new MetricsDirectoryReader is created, the old MetricsDirectoryReader will be decRef during {@link MetricsDirectoryReaderReferenceManager#decRef(OpenSearchDirectoryReader)} ()} and closed if no longer referenced
- * 2) During MetricsEngine shutdown, ReferenceManager is closed which closes the current MetricsDirectoryReader
+ * TSDBDirectoryReader is managed by {@link TSDBDirectoryReaderReferenceManager} created in TSDBEngine
+ * TSDBDirectoryReader is instantiated when {@link TSDBDirectoryReaderReferenceManager} is created during TSDBEngine start up
+ * TSDBDirectoryReader is refreshed when {@link TSDBDirectoryReaderReferenceManager#refreshIfNeeded(OpenSearchDirectoryReader)} is called
+ * TSDBDirectoryReader is closed when
+ * 1) During TSDBEngine refresh,  if new TSDBDirectoryReader is created, the old TSDBDirectoryReader will be decRef during {@link TSDBDirectoryReaderReferenceManager#decRef(OpenSearchDirectoryReader)} ()} and closed if no longer referenced
+ * 2) During TSDBEngine shutdown, ReferenceManager is closed which closes the current TSDBDirectoryReader
  */
 @SuppressForbidden(reason = "Reference managing is needed here")
-public class MetricsDirectoryReader extends DirectoryReader {
-    private static final Logger log = LogManager.getLogger(MetricsDirectoryReader.class);
+public class TSDBDirectoryReader extends DirectoryReader {
+    private static final Logger log = LogManager.getLogger(TSDBDirectoryReader.class);
     private final DirectoryReader liveSeriesIndexDirectoryReader;
     private final List<DirectoryReader> closedChunkIndexDirectoryReaders;
     private final MemChunkReader memChunkReader;
     private final long version;
 
     /**
-     * Constructs a MetricsDirectoryReader that combines a live series index reader
+     * Constructs a TSDBDirectoryReader that combines a live series index reader
      * @param liveReader the DirectoryReader for the live series index
      * @param closedChunkIndexReaders list of DirectoryReaders for closed chunk indices
      * @param memChunkReader reader to read MemChunk from reference, this is needed for LiveSeriesIndexLeafReader
      * @param version the version of this reader instance. Version will be increased by 1 for each refresh
      * @throws IOException if an I/O error occurs during construction
      */
-    public MetricsDirectoryReader(
+    public TSDBDirectoryReader(
         DirectoryReader liveReader,
         List<DirectoryReader> closedChunkIndexReaders,
         MemChunkReader memChunkReader,
@@ -87,13 +87,13 @@ public class MetricsDirectoryReader extends DirectoryReader {
     }
 
     /**
-     * Constructs a MetricsDirectoryReader that combines a live series index reader
+     * Constructs a TSDBDirectoryReader that combines a live series index reader
      * @param liveReader the DirectoryReader for the live series index
      * @param closedChunkIndexReaders list of DirectoryReaders for closed chunk indices
      * @param memChunkReader reader to read MemChunk from reference, this is needed for LiveSeriesIndexLeafReader
      * @throws IOException if an I/O error occurs during construction
      */
-    public MetricsDirectoryReader(DirectoryReader liveReader, List<DirectoryReader> closedChunkIndexReaders, MemChunkReader memChunkReader)
+    public TSDBDirectoryReader(DirectoryReader liveReader, List<DirectoryReader> closedChunkIndexReaders, MemChunkReader memChunkReader)
         throws IOException {
         this(liveReader, closedChunkIndexReaders, memChunkReader, 0L);
     }
@@ -120,11 +120,11 @@ public class MetricsDirectoryReader extends DirectoryReader {
     }
 
     /**
-     * Releases references to newly created readers after they've been passed to MetricsDirectoryReader constructor.
+     * Releases references to newly created readers after they've been passed to TSDBDirectoryReader constructor.
      *
      * <p>This method ensures proper reference counting by decRef'ing only NEW readers (not reused ones).
-     * Since the MetricsDirectoryReader constructor incRef's all readers, this cleanup ensures that only
-     * the MetricsDirectoryReader owns the new readers, preventing reference leaks.
+     * Since the TSDBDirectoryReader constructor incRef's all readers, this cleanup ensures that only
+     * the TSDBDirectoryReader owns the new readers, preventing reference leaks.
      *
      * @param newLiveSeriesReader the new live series reader, or null if unchanged
      * @param newClosedChunkReaders list of closed chunk readers (mix of new and reused)
@@ -177,7 +177,7 @@ public class MetricsDirectoryReader extends DirectoryReader {
      * Only handles updates on existing DirectoryReaders.
      *
      * If new closed chunk indices are added or existing ones are removed,
-     * it should be handled in MetricsDirectoryReaderReferenceManager.
+     * it should be handled in TSDBDirectoryReaderReferenceManager.
      *
      * @return a new DirectoryReader if changes were detected, null otherwise
      * @throws IOException if an I/O error occurs during refresh
@@ -211,8 +211,8 @@ public class MetricsDirectoryReader extends DirectoryReader {
                 return null;
             }
 
-            // Create new MetricsDirectoryReader with refreshed readers
-            MetricsDirectoryReader newMetricsReader = new MetricsDirectoryReader(
+            // Create new TSDBDirectoryReader with refreshed readers
+            TSDBDirectoryReader newTSDBReader = new TSDBDirectoryReader(
                 newLiveSeriesReader != null ? newLiveSeriesReader : this.liveSeriesIndexDirectoryReader,
                 newClosedChunkReaders,
                 memChunkReader,
@@ -222,7 +222,7 @@ public class MetricsDirectoryReader extends DirectoryReader {
             // Release local references - constructor has already incRef'd the readers
             cleanupNewReaders(newLiveSeriesReader, newClosedChunkReaders, false, null);
 
-            return newMetricsReader;
+            return newTSDBReader;
 
         } catch (Exception e) {
             // Clean up new readers on failure
@@ -233,12 +233,12 @@ public class MetricsDirectoryReader extends DirectoryReader {
 
     @Override
     protected DirectoryReader doOpenIfChanged(IndexCommit indexCommit) throws IOException {
-        throw new UnsupportedEncodingException("MetricsDirectoryReader does not support opening with IndexCommit");
+        throw new UnsupportedEncodingException("TSDBDirectoryReader does not support opening with IndexCommit");
     }
 
     @Override
     protected DirectoryReader doOpenIfChanged(IndexWriter indexWriter, boolean b) throws IOException {
-        throw new UnsupportedEncodingException("MetricsDirectoryReader does not support opening with IndexWriter");
+        throw new UnsupportedEncodingException("TSDBDirectoryReader does not support opening with IndexWriter");
     }
 
     @Override

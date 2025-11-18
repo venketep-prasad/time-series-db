@@ -43,10 +43,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for MetricsDirectoryReaderReferenceManager
+ * Unit tests for TSDBDirectoryReaderReferenceManager
  */
 @SuppressForbidden(reason = "reference counting is required for testing")
-public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestCase {
+public class TSDBDirectoryReaderReferenceManagerTests extends OpenSearchTestCase {
 
     private Directory liveDirectory;
     private Directory closedDirectory1;
@@ -64,7 +64,7 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
     private ClosedChunkIndexManager closedChunkIndexManager;
     private MemChunkReader memChunkReader;
     private ShardId shardId;
-    private MetricsDirectoryReaderReferenceManager referenceManager;
+    private TSDBDirectoryReaderReferenceManager referenceManager;
     private List<MemChunk> memChunks;
 
     @Before
@@ -197,8 +197,8 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Mock ClosedChunkIndexManager to return initial set of reader managers
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        // Create MetricsDirectoryReaderReferenceManager
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        // Create TSDBDirectoryReaderReferenceManager
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         // Verify initialization
         assertNotNull("Reference manager should be initialized", referenceManager);
@@ -207,18 +207,18 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         withAcquiredReader(reader -> {
             assertNotNull("Current reader should not be null", reader);
 
-            // Verify the reader is a wrapped MetricsDirectoryReader
+            // Verify the reader is a wrapped TSDBDirectoryReader
             assertTrue("Current reader should be OpenSearchDirectoryReader", reader instanceof OpenSearchDirectoryReader);
 
-            // Verify the underlying MetricsDirectoryReader has correct structure
+            // Verify the underlying TSDBDirectoryReader has correct structure
             DirectoryReader unwrapped = reader.getDelegate();
-            assertTrue("Unwrapped reader should be MetricsDirectoryReader", unwrapped instanceof MetricsDirectoryReader);
+            assertTrue("Unwrapped reader should be TSDBDirectoryReader", unwrapped instanceof TSDBDirectoryReader);
 
-            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) unwrapped;
-            assertEquals("Should have 2 closed chunk readers", 2, metricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader tsdbDirectoryReader = (TSDBDirectoryReader) unwrapped;
+            assertEquals("Should have 2 closed chunk readers", 2, tsdbDirectoryReader.getClosedChunkReadersCount());
 
             // Expected total documents: 2 live + 1 closed1 + 1 closed2 = 4
-            assertEquals("Should have correct total document count", 4, metricsReader.numDocs());
+            assertEquals("Should have correct total document count", 4, tsdbDirectoryReader.numDocs());
         });
     }
 
@@ -227,12 +227,12 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Start with 2 closed indices
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         withAcquiredReader(reader -> {
             int initialRefCount = reader.getRefCount();
-            MetricsDirectoryReader initialMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("Initial should have 2 closed chunk readers", 2, initialMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader initialTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("Initial should have 2 closed chunk readers", 2, initialTSDBReader.getClosedChunkReadersCount());
             assertEquals("initial ref count should be 2", 2, initialRefCount);
         });
 
@@ -257,11 +257,11 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Verify new reader has 3 closed chunk readers and track reference count
         withAcquiredReader(reader -> {
             int newRefCount = reader.getRefCount();
-            MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("New reader should have 3 closed chunk readers", 3, newMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader newTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("New reader should have 3 closed chunk readers", 3, newTSDBReader.getClosedChunkReadersCount());
 
             // Expected total documents: 2 live + 1 closed1 + 1 closed2 + 1 closed3 = 5
-            assertEquals("Should have correct total document count", 5, newMetricsReader.numDocs());
+            assertEquals("Should have correct total document count", 5, newTSDBReader.numDocs());
 
             // Verify reference count is properly managed
             assertTrue("New reader should have positive reference count", newRefCount > 0);
@@ -274,7 +274,7 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Start with 1 closed chunk index
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         // Get initial reader version
         OpenSearchDirectoryReader initialReader = referenceManager.acquire();
@@ -289,8 +289,8 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
 
         OpenSearchDirectoryReader readerAfterFirstRefresh = referenceManager.acquire();
         long versionAfterFirstRefresh = readerAfterFirstRefresh.getVersion();
-        MetricsDirectoryReader metricsReaderAfterFirst = (MetricsDirectoryReader) readerAfterFirstRefresh.getDelegate();
-        assertEquals("Should have 2 closed chunk readers after first refresh", 2, metricsReaderAfterFirst.getClosedChunkReadersCount());
+        TSDBDirectoryReader tsdbReaderAfterFirst = (TSDBDirectoryReader) readerAfterFirstRefresh.getDelegate();
+        assertEquals("Should have 2 closed chunk readers after first refresh", 2, tsdbReaderAfterFirst.getClosedChunkReadersCount());
         assertTrue("Version should have incremented after structural refresh", versionAfterFirstRefresh > initialVersion);
         referenceManager.release(readerAfterFirstRefresh);
 
@@ -328,12 +328,12 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         );
         int initialRefCountForClosedReader3 = closedReader3.getRefCount();
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
         assertEquals("Ref count to closedReader3 should increase by 1", initialRefCountForClosedReader3 + 1, closedReader3.getRefCount());
 
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader initialMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("Initial should have 3 closed chunk readers", 3, initialMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader initialTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("Initial should have 3 closed chunk readers", 3, initialTSDBReader.getClosedChunkReadersCount());
         });
 
         // Simulate removing a closed chunk index
@@ -348,11 +348,11 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
 
         // Verify new reader has 2 closed chunk readers
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("New reader should have 2 closed chunk readers", 2, newMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader newTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("New reader should have 2 closed chunk readers", 2, newTSDBReader.getClosedChunkReadersCount());
 
             // Expected total documents: 2 live + 1 closed1 + 1 closed2 = 4
-            assertEquals("Should have correct total document count", 4, newMetricsReader.numDocs());
+            assertEquals("Should have correct total document count", 4, newTSDBReader.numDocs());
             assertEquals("ClosedReader3 ref count should decrease by 1", initialRefCountForClosedReader3, closedReader3.getRefCount());
         });
     }
@@ -362,11 +362,11 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Set up with 2 closed indices
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         int initialDocCount = withAcquiredReader(reader -> {
-            MetricsDirectoryReader initialMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            return initialMetricsReader.numDocs();
+            TSDBDirectoryReader initialTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            return initialTSDBReader.numDocs();
         });
 
         // Add a document to live index
@@ -382,11 +382,11 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
 
         // Verify refresh occurred due to live index change
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("Should still have 2 closed chunk readers", 2, newMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader newTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("Should still have 2 closed chunk readers", 2, newTSDBReader.getClosedChunkReadersCount());
 
             // Document count should increase by 1
-            assertTrue("Document count should increase", newMetricsReader.numDocs() >= initialDocCount);
+            assertTrue("Document count should increase", newTSDBReader.numDocs() >= initialDocCount);
         });
     }
 
@@ -395,12 +395,12 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Set up with 2 closed indices
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         // Get initial document count
         int initialDocCount = withAcquiredReader(reader -> {
-            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            return metricsReader.numDocs();
+            TSDBDirectoryReader tsdbReader = (TSDBDirectoryReader) reader.getDelegate();
+            return tsdbReader.numDocs();
         });
 
         // Update an existing closed chunk by reopening closedDirectory1 with a writer
@@ -422,13 +422,13 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
 
         // Verify refresh occurred and document count increased
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("Should still have 2 closed chunk readers", 2, metricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader tsdbDirectoryReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("Should still have 2 closed chunk readers", 2, tsdbDirectoryReader.getClosedChunkReadersCount());
 
             // Document count should increase by 1 due to the new document in closedDirectory1
             // Initial: 2 live + 1 closed1 + 1 closed2 = 4
             // After update: 2 live + 2 closed1 + 1 closed2 = 5
-            assertEquals("Document count should increase by 1", initialDocCount + 1, metricsReader.numDocs());
+            assertEquals("Document count should increase by 1", initialDocCount + 1, tsdbDirectoryReader.numDocs());
         });
 
     }
@@ -438,7 +438,7 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Start with 2 closed indices
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         withAcquiredReader(reader -> {
             // Just verify we can acquire the initial reader
@@ -463,11 +463,11 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
 
         // Verify new reader has 3 closed chunk readers and increased document count
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader newMetricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            assertEquals("New reader should have 3 closed chunk readers", 3, newMetricsReader.getClosedChunkReadersCount());
+            TSDBDirectoryReader newTSDBReader = (TSDBDirectoryReader) reader.getDelegate();
+            assertEquals("New reader should have 3 closed chunk readers", 3, newTSDBReader.getClosedChunkReadersCount());
 
             // Expected total documents: 3 live + 1 closed1 + 1 closed2 + 1 closed3 = 6
-            assertEquals("Should have correct total document count", 6, newMetricsReader.numDocs());
+            assertEquals("Should have correct total document count", 6, newTSDBReader.numDocs());
         });
     }
 
@@ -475,12 +475,12 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
     public void testConcurrentRefreshOperations() throws IOException, InterruptedException {
         when(closedChunkIndexManager.getReaderManagers()).thenReturn(Arrays.asList(closedReaderManager1, closedReaderManager2));
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         // Get initial document count
         int initialDocCount = withAcquiredReader(reader -> {
-            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            return metricsReader.numDocs();
+            TSDBDirectoryReader tsdbDirectoryReader = (TSDBDirectoryReader) reader.getDelegate();
+            return tsdbDirectoryReader.numDocs();
         });
 
         final int numWriterThreads = 3;
@@ -542,8 +542,8 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
                     for (int read = 0; read < 5; read++) {
                         OpenSearchDirectoryReader reader = referenceManager.acquire();
                         try {
-                            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) reader.getDelegate();
-                            int currentDocCount = metricsReader.numDocs();
+                            TSDBDirectoryReader tsdbDirectoryReader = (TSDBDirectoryReader) reader.getDelegate();
+                            int currentDocCount = tsdbDirectoryReader.numDocs();
 
                             // Update max seen count atomically
                             maxSeenDocCount.updateAndGet(current -> Math.max(current, currentDocCount));
@@ -578,8 +578,8 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         // Verify final state
         int expectedFinalDocCount = initialDocCount + (numWriterThreads * docsPerWriterThread);
         withAcquiredReader(reader -> {
-            MetricsDirectoryReader metricsReader = (MetricsDirectoryReader) reader.getDelegate();
-            int finalDocCount = metricsReader.numDocs();
+            TSDBDirectoryReader tsdbDirectoryReader = (TSDBDirectoryReader) reader.getDelegate();
+            int finalDocCount = tsdbDirectoryReader.numDocs();
 
             assertEquals("Should have correct final document count", expectedFinalDocCount, finalDocCount);
             assertTrue("Max seen doc count should be at least the final count", maxSeenDocCount.get() >= initialDocCount);
@@ -594,7 +594,7 @@ public class MetricsDirectoryReaderReferenceManagerTests extends OpenSearchTestC
         int initialRefCountForClosedReader2 = closedReader2.getRefCount();
         int initialRefCountForLiveReader = liveReader.getRefCount();
 
-        referenceManager = new MetricsDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
+        referenceManager = new TSDBDirectoryReaderReferenceManager(liveReaderManager, closedChunkIndexManager, memChunkReader, shardId);
 
         // ref count of underlying sub readers should increase by 1
         assertEquals("Ref count to closedReader1 should increase by 1", initialRefCountForClosedReader1 + 1, closedReader1.getRefCount());

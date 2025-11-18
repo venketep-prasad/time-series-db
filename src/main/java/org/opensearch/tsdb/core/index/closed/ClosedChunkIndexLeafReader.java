@@ -31,20 +31,20 @@ import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.index.IndexUtils;
 import org.opensearch.tsdb.core.mapping.Constants;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
-import org.opensearch.tsdb.core.reader.MetricsLeafReader;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
+import org.opensearch.tsdb.core.reader.TSDBLeafReader;
 
 import java.io.IOException;
 import java.util.List;
 
 /**
- * MetricsLeafReader implementation for ClosedChunkIndex segments.
+ * TSDBLeafReader implementation for ClosedChunkIndex segments.
  *
  * This reader provides access to closed (completed) time series chunks that have been
  * persisted to disk. Each document contains a single serialized chunk that is decoded
  * on demand during query processing.
  */
-public class ClosedChunkIndexLeafReader extends MetricsLeafReader {
+public class ClosedChunkIndexLeafReader extends TSDBLeafReader {
 
     private final LeafReader inner;
 
@@ -60,7 +60,7 @@ public class ClosedChunkIndexLeafReader extends MetricsLeafReader {
     }
 
     @Override
-    public MetricsDocValues getMetricsDocValues() throws IOException {
+    public TSDBDocValues getTSDBDocValues() throws IOException {
         try {
             BinaryDocValues chunkValues = this.getBinaryDocValues(Constants.IndexSchema.CHUNK);
             SortedSetDocValues labelsDocValues = this.getSortedSetDocValues(Constants.IndexSchema.LABELS);
@@ -70,16 +70,16 @@ public class ClosedChunkIndexLeafReader extends MetricsLeafReader {
             if (labelsDocValues == null) {
                 throw new IOException("Labels field '" + Constants.IndexSchema.LABELS + "' not found in index.");
             }
-            return new ClosedChunkIndexMetricsDocValues(chunkValues, labelsDocValues);
+            return new ClosedChunkIndexTSDBDocValues(chunkValues, labelsDocValues);
         } catch (IOException e) {
-            throw new IOException("Error accessing MetricsDocValues in ClosedChunkIndexLeafReader: " + e.getMessage(), e);
+            throw new IOException("Error accessing TSDBDocValues in ClosedChunkIndexLeafReader: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public List<ChunkIterator> chunksForDoc(int docId, MetricsDocValues metricsDocValues) throws IOException {
+    public List<ChunkIterator> chunksForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
 
-        BinaryDocValues chunkValues = metricsDocValues.getChunkDocValues();
+        BinaryDocValues chunkValues = tsdbDocValues.getChunkDocValues();
         if (!chunkValues.advanceExact(docId)) {
             throw new IOException("Chunk field 'chunk' not found for document in closed chunk index.");
         }
@@ -95,8 +95,8 @@ public class ClosedChunkIndexLeafReader extends MetricsLeafReader {
     }
 
     @Override
-    public Labels labelsForDoc(int docId, MetricsDocValues metricsDocValues) throws IOException {
-        return IndexUtils.labelsForDoc(docId, metricsDocValues);
+    public Labels labelsForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
+        return IndexUtils.labelsForDoc(docId, tsdbDocValues);
     }
 
     @Override

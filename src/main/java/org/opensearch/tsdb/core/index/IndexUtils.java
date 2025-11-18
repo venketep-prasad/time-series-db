@@ -11,7 +11,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.util.BytesRef;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -37,12 +37,12 @@ public final class IndexUtils {
      * Decode labels from SortedSetDocValues into Labels object for both live series and closed chunk index.
      *
      * @param docId the document ID to extract labels for
-     * @param metricsDocValues the metrics doc values containing labels data
+     * @param tsdbDocValues the tsdb doc values containing labels data
      * @return the decoded labels for the document
      * @throws IOException if an error occurs reading the labels
      */
-    public static Labels labelsForDoc(int docId, MetricsDocValues metricsDocValues) throws IOException {
-        SortedSetDocValues labelsDocValues = metricsDocValues.getLabelsDocValues();
+    public static Labels labelsForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
+        SortedSetDocValues labelsDocValues = tsdbDocValues.getLabelsDocValues();
         if (labelsDocValues == null || !labelsDocValues.advanceExact(docId)) {
             return ByteLabels.emptyLabels();
         }

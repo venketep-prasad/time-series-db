@@ -24,15 +24,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Reference manager for MetricsDirectoryReader that handles initiation and refreshing of MetricsDirectoryReader instances.
+ * Reference manager for TSDBDirectoryReader that handles initiation and refreshing of TSDBDirectoryReader instances.
  * It manages acquiring and releasing of underlying DirectoryReaders from live series index and closed chunk indexes.
  * Life Cycle:
- * MetricsDirectoryReaderReferenceManager is created once per MetricsEngine instance and lives as long as the MetricsEngine.
+ * TSDBDirectoryReaderReferenceManager is created once per TSDBEngine instance and lives as long as the TSDBEngine.
  * **/
 @SuppressForbidden(reason = "Reference managing is required here")
-public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<OpenSearchDirectoryReader> {
+public class TSDBDirectoryReaderReferenceManager extends ReferenceManager<OpenSearchDirectoryReader> {
 
-    private static final Logger log = LogManager.getLogger(MetricsDirectoryReaderReferenceManager.class);
+    private static final Logger log = LogManager.getLogger(TSDBDirectoryReaderReferenceManager.class);
     private final ReaderManager liveSeriesIndexReaderManager;
     private final ClosedChunkIndexManager closedChunkIndexManager;
     private final MemChunkReader memChunkReader;
@@ -41,7 +41,7 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
     private volatile List<ReaderManager> closedChunkIndexReaderManagers;
 
     /**
-     * Creates a new MetricsDirectoryReaderReferenceManager.
+     * Creates a new TSDBDirectoryReaderReferenceManager.
      * @param liveSeriesIndexReaderManager the reader manager for live series index
      * @param closedChunkIndexManager the manager for closed chunk indices
      * @param memChunkReader the reader for memory chunks
@@ -49,7 +49,7 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
      * @throws IOException if an I/O error occurs during initialization
      */
     // TODO : Pass in data structure to hold already mmaped chunks
-    public MetricsDirectoryReaderReferenceManager(
+    public TSDBDirectoryReaderReferenceManager(
         ReaderManager liveSeriesIndexReaderManager,
         ClosedChunkIndexManager closedChunkIndexManager,
         MemChunkReader memChunkReader,
@@ -64,12 +64,12 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
 
         // initiate the MDR here
         this.current = OpenSearchDirectoryReader.wrap(
-            creatNewMetricsDirectoryReader(liveSeriesIndexReaderManager, closedChunkIndexManager, memChunkReader, 0L),
+            creatNewTSDBDirectoryReader(liveSeriesIndexReaderManager, closedChunkIndexManager, memChunkReader, 0L),
             shardId
         );
     }
 
-    private MetricsDirectoryReader creatNewMetricsDirectoryReader(
+    private TSDBDirectoryReader creatNewTSDBDirectoryReader(
         ReaderManager liveSeriesIndexReaderManager,
         ClosedChunkIndexManager closedChunkIndexManager,
         MemChunkReader memchunkReader,
@@ -92,11 +92,10 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
             }
 
             log.info("Refreshing closed reader managers, total readers: {}", closedReaders.size());
-            // Create MetricsDirectoryReader with DirectoryReader instances
-            return new MetricsDirectoryReader(liveReader, closedReaders, memchunkReader, currentVersion + 1);
+            return new TSDBDirectoryReader(liveReader, closedReaders, memchunkReader, currentVersion + 1);
 
         } catch (IOException | AlreadyClosedException e) {
-            log.error("Error creating MetricsDirectoryReader: ", e);
+            log.error("Error creating TSDBDirectoryReader: ", e);
             throw e;
         } finally {
             if (liveReader != null) {
@@ -112,7 +111,7 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
 
     @Override
     protected void decRef(OpenSearchDirectoryReader reference) throws IOException {
-        // Only calling decRef on OpenSearchDirectoryReader which will call decRef on underlying MetricsDirectoryReader
+        // Only calling decRef on OpenSearchDirectoryReader which will call decRef on underlying TSDBDirectoryReader
         // This does not decRef the underlying DirectoryReaders as they are managed by their respective ReaderManagers
         reference.decRef();
     }
@@ -132,7 +131,7 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
         if (!this.closedChunkIndexReaderManagers.equals(currentReaderManagers)) {
             // Structural change detected - indexes were added or removed
             final OpenSearchDirectoryReader reader = OpenSearchDirectoryReader.wrap(
-                creatNewMetricsDirectoryReader(
+                creatNewTSDBDirectoryReader(
                     liveSeriesIndexReaderManager,
                     closedChunkIndexManager,
                     memChunkReader,
@@ -144,11 +143,11 @@ public class MetricsDirectoryReaderReferenceManager extends ReferenceManager<Ope
             // Update snapshot to prevent redundant structural refreshes
             this.closedChunkIndexReaderManagers = currentReaderManagers;
 
-            log.info("Refreshed the metrics directory reader");
+            log.info("Refreshed the tsdb directory reader");
             return reader;
 
         } else {
-            log.info("No changes detected for refreshing the metrics directory reader");
+            log.info("No changes detected for refreshing the tsdb directory reader");
             // No structural change - attempt lightweight refresh
             return (OpenSearchDirectoryReader) DirectoryReader.openIfChanged(referenceToRefresh);
         }

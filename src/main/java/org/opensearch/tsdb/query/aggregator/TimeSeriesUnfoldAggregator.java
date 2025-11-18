@@ -25,8 +25,8 @@ import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Labels;
 import org.opensearch.tsdb.core.model.Sample;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
-import org.opensearch.tsdb.core.reader.MetricsLeafReader;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
+import org.opensearch.tsdb.core.reader.TSDBLeafReader;
 import org.opensearch.tsdb.metrics.TSDBMetrics;
 import org.opensearch.tsdb.query.utils.SampleMerger;
 import org.opensearch.tsdb.query.stage.UnaryPipelineStage;
@@ -181,31 +181,31 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
     private class TimeSeriesUnfoldLeafBucketCollector extends LeafBucketCollectorBase {
 
         private final LeafBucketCollector subCollector;
-        private final MetricsLeafReader metricsReader;
-        private MetricsDocValues metricsDocValues;
+        private final TSDBLeafReader tsdbLeafReader;
+        private TSDBDocValues tsdbDocValues;
 
         public TimeSeriesUnfoldLeafBucketCollector(LeafBucketCollector sub, LeafReaderContext ctx) throws IOException {
             super(sub, ctx);
             this.subCollector = sub;
 
-            // Get the MetricsLeafReader from the context
-            this.metricsReader = unwrapMetricsLeafReader(ctx.reader());
-            if (this.metricsReader == null) {
-                throw new IOException("Expected MetricsLeafReader but found: " + ctx.reader().getClass().getName());
+            // Get the TSDBLeafReader from the context
+            this.tsdbLeafReader = unwrapTSDBLeafReader(ctx.reader());
+            if (this.tsdbLeafReader == null) {
+                throw new IOException("Expected TSDBLeafReader but found: " + ctx.reader().getClass().getName());
             }
 
-            // Get MetricsDocValues - this provides unified access to chunks and labels
-            this.metricsDocValues = this.metricsReader.getMetricsDocValues();
+            // Get TSDBDocValues - this provides unified access to chunks and labels
+            this.tsdbDocValues = this.tsdbLeafReader.getTSDBDocValues();
         }
 
         /**
-         * Unwrap filter readers to find the underlying MetricsLeafReader.
+         * Unwrap filter readers to find the underlying TSDBLeafReader.
          */
-        private MetricsLeafReader unwrapMetricsLeafReader(LeafReader reader) {
-            if (reader instanceof MetricsLeafReader metricsReader) {
-                return metricsReader;
+        private TSDBLeafReader unwrapTSDBLeafReader(LeafReader reader) {
+            if (reader instanceof TSDBLeafReader tsdbLeafReader) {
+                return tsdbLeafReader;
             } else if (reader instanceof FilterLeafReader filterReader) {
-                return unwrapMetricsLeafReader(filterReader.getDelegate());
+                return unwrapTSDBLeafReader(filterReader.getDelegate());
             }
             return null;
         }
@@ -213,7 +213,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
         @Override
         public void collect(int doc, long bucket) throws IOException {
             // Track document processing - determine if from live or closed index
-            boolean isLiveReader = metricsReader instanceof LiveSeriesIndexLeafReader;
+            boolean isLiveReader = tsdbLeafReader instanceof LiveSeriesIndexLeafReader;
             totalDocsProcessed++;
             if (isLiveReader) {
                 liveDocsProcessed++;
@@ -226,7 +226,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             // Use unified API to get chunks for this document
             List<ChunkIterator> chunkIterators;
             try {
-                chunkIterators = metricsReader.chunksForDoc(doc, metricsDocValues);
+                chunkIterators = tsdbLeafReader.chunksForDoc(doc, tsdbDocValues);
             } catch (Exception e) {
                 chunksForDocErrors++;
                 throw e;
@@ -306,7 +306,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             }
 
             // Use unified API to get labels for this document
-            Labels labels = metricsReader.labelsForDoc(doc, metricsDocValues);
+            Labels labels = tsdbLeafReader.labelsForDoc(doc, tsdbDocValues);
             // NOTE: Currently, labels is expected to be an instance of ByteLabels. If a new Labels implementation
             // is introduced, ensure that its equals() method is correctly implemented for label comparison below,
             // as aggregator relies on accurate equality checks.

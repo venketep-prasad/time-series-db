@@ -25,11 +25,11 @@ import org.opensearch.tsdb.core.chunk.ChunkAppender;
 import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.chunk.XORChunk;
 import org.opensearch.tsdb.core.head.MemChunk;
+import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexTSDBDocValues;
 import org.opensearch.tsdb.core.index.live.LiveSeriesIndexLeafReader;
-import org.opensearch.tsdb.core.index.live.LiveSeriesIndexMetricsDocValues;
+import org.opensearch.tsdb.core.index.live.LiveSeriesIndexTSDBDocValues;
 import org.opensearch.tsdb.core.index.live.MemChunkReader;
 import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexLeafReader;
-import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexMetricsDocValues;
 import org.opensearch.tsdb.core.index.closed.ClosedChunkIndexIO;
 import org.opensearch.tsdb.core.model.Labels;
 
@@ -43,9 +43,9 @@ import static org.opensearch.tsdb.core.mapping.Constants.IndexSchema.CHUNK;
 import static org.opensearch.tsdb.core.mapping.Constants.IndexSchema.REFERENCE;
 
 /**
- * Unit tests for MetricsLeafReader implementations.
+ * Unit tests for TSDBLeafReader implementations.
  */
-public class MetricsLeafReaderTests extends OpenSearchTestCase {
+public class TSDBLeafReaderTests extends OpenSearchTestCase {
 
     private Directory directory;
     private IndexWriter indexWriter;
@@ -118,16 +118,16 @@ public class MetricsLeafReaderTests extends OpenSearchTestCase {
             // Create ClosedChunkIndexLeafReader
             ClosedChunkIndexLeafReader metricsReader = new ClosedChunkIndexLeafReader(leafReader);
 
-            // Test getMetricsDocValues()
-            MetricsDocValues metricsDocValues = metricsReader.getMetricsDocValues();
-            assertNotNull("MetricsDocValues should not be null", metricsDocValues);
-            assertTrue("Should be ClosedChunkIndexMetricsDocValues", metricsDocValues instanceof ClosedChunkIndexMetricsDocValues);
+            // Test getTSDBDocValues()
+            TSDBDocValues tsdbDocValues = metricsReader.getTSDBDocValues();
+            assertNotNull("tsdbDocValues should not be null", tsdbDocValues);
+            assertTrue("Should be ClosedChunkIndexTSDBDocValues", tsdbDocValues instanceof ClosedChunkIndexTSDBDocValues);
 
             // Verify that chunk ref doc values throws UnsupportedOperationException
-            expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkRefDocValues);
+            expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkRefDocValues);
 
             // Test chunksForDoc() for document 0
-            List<ChunkIterator> chunks = metricsReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = metricsReader.chunksForDoc(0, tsdbDocValues);
             assertNotNull("Chunks should not be null", chunks);
             assertEquals("Should have one chunk", 1, chunks.size());
 
@@ -136,7 +136,7 @@ public class MetricsLeafReaderTests extends OpenSearchTestCase {
             assertTrue("Chunk should have data", chunk.next() != ChunkIterator.ValueType.NONE);
 
             // Test labelsForDoc() for document 0
-            Labels labels = metricsReader.labelsForDoc(0, metricsDocValues);
+            Labels labels = metricsReader.labelsForDoc(0, tsdbDocValues);
             assertNotNull("Labels should not be null", labels);
             assertEquals("Should have correct metric name", "http_requests_total", labels.get("__name__"));
             assertEquals("Should have correct method label", "GET", labels.get("method"));
@@ -160,16 +160,16 @@ public class MetricsLeafReaderTests extends OpenSearchTestCase {
             // Create LiveSeriesIndexLeafReader
             LiveSeriesIndexLeafReader metricsReader = new LiveSeriesIndexLeafReader(leafReader, memChunkReader);
 
-            // Test getMetricsDocValues()
-            MetricsDocValues metricsDocValues = metricsReader.getMetricsDocValues();
-            assertNotNull("MetricsDocValues should not be null", metricsDocValues);
-            assertTrue("Should be LiveSeriesIndexMetricsDocValues", metricsDocValues instanceof LiveSeriesIndexMetricsDocValues);
+            // Test getTSDBDocValues()
+            TSDBDocValues tsdbDocValues = metricsReader.getTSDBDocValues();
+            assertNotNull("tsdbDocValues should not be null", tsdbDocValues);
+            assertTrue("Should be LiveSeriesIndexTSDBDocValues", tsdbDocValues instanceof LiveSeriesIndexTSDBDocValues);
 
             // Verify that chunk doc values throws UnsupportedOperationException
-            expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkDocValues);
+            expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkDocValues);
 
             // Test chunksForDoc() for document 0 (reference 100L)
-            List<ChunkIterator> chunks = metricsReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = metricsReader.chunksForDoc(0, tsdbDocValues);
             assertNotNull("Chunks should not be null", chunks);
             assertEquals("Should have one chunk for reference 100L", 1, chunks.size());
 
@@ -181,7 +181,7 @@ public class MetricsLeafReaderTests extends OpenSearchTestCase {
             assertEquals("First value should be 75.5", 75.5, firstValue.value(), 0.001);
 
             // Test labelsForDoc() for document 0
-            Labels labels = metricsReader.labelsForDoc(0, metricsDocValues);
+            Labels labels = metricsReader.labelsForDoc(0, tsdbDocValues);
             assertNotNull("Labels should not be null", labels);
             assertEquals("Should have correct metric name", "cpu_usage", labels.get("__name__"));
             assertEquals("Should have correct host label", "server1", labels.get("host"));
@@ -206,7 +206,7 @@ public class MetricsLeafReaderTests extends OpenSearchTestCase {
             ClosedChunkIndexLeafReader metricsReader = new ClosedChunkIndexLeafReader(leafReader);
 
             // Should throw IOException when chunk field is missing
-            expectThrows(IOException.class, metricsReader::getMetricsDocValues);
+            expectThrows(IOException.class, metricsReader::getTSDBDocValues);
         }
     }
 

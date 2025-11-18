@@ -10,19 +10,19 @@ package org.opensearch.tsdb.core.index.closed;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 /**
- * ClosedChunkIndexMetricsDocValues is a wrapper class for holding chunk doc values and labels doc values for closed chunk index.
+ * ClosedChunkIndexTSDBDocValues is a wrapper class for holding chunk doc values and labels doc values for closed chunk index.
  */
-public class ClosedChunkIndexMetricsDocValues extends MetricsDocValues {
+public class ClosedChunkIndexTSDBDocValues extends TSDBDocValues {
     /**
-     * Constructor for closed chunk index metrics doc values.
+     * Constructor for closed chunk index tsdb doc values.
      *
      * @param chunkDocValues the binary doc values containing serialized chunk data
      * @param labelsDocValues the sorted set doc values containing labels
      */
-    public ClosedChunkIndexMetricsDocValues(BinaryDocValues chunkDocValues, SortedSetDocValues labelsDocValues) {
+    public ClosedChunkIndexTSDBDocValues(BinaryDocValues chunkDocValues, SortedSetDocValues labelsDocValues) {
         super(chunkDocValues, labelsDocValues);
     }
 

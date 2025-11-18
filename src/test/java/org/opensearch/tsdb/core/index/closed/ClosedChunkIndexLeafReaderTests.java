@@ -27,7 +27,7 @@ import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.chunk.XORChunk;
 import org.opensearch.tsdb.core.head.MemChunk;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 import java.io.IOException;
 import java.util.List;
@@ -77,7 +77,7 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
         }
     }
 
-    public void testGetMetricsDocValues() throws IOException {
+    public void testGetTSDBDocValues() throws IOException {
         createTestDocument();
         indexWriter.commit();
 
@@ -86,18 +86,18 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            assertNotNull("MetricsDocValues should not be null", metricsDocValues);
-            assertTrue("Should be ClosedChunkIndexMetricsDocValues", metricsDocValues instanceof ClosedChunkIndexMetricsDocValues);
+            assertNotNull("tsdbDocValues should not be null", tsdbDocValues);
+            assertTrue("Should be ClosedChunkIndexTSDBDocValues", tsdbDocValues instanceof ClosedChunkIndexTSDBDocValues);
 
-            BinaryDocValues chunkDocValues = metricsDocValues.getChunkDocValues();
-            SortedSetDocValues labelsDocValues = metricsDocValues.getLabelsDocValues();
+            BinaryDocValues chunkDocValues = tsdbDocValues.getChunkDocValues();
+            SortedSetDocValues labelsDocValues = tsdbDocValues.getLabelsDocValues();
 
             assertNotNull("ChunkDocValues should not be null", chunkDocValues);
             assertNotNull("LabelsDocValues should not be null", labelsDocValues);
 
-            expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkRefDocValues);
+            expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkRefDocValues);
         }
     }
 
@@ -110,9 +110,9 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, tsdbDocValues);
 
             assertNotNull("Chunks should not be null", chunks);
             assertEquals("Should have one chunk", 1, chunks.size());
@@ -137,9 +137,9 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            Labels labels = leafReader.labelsForDoc(0, metricsDocValues);
+            Labels labels = leafReader.labelsForDoc(0, tsdbDocValues);
 
             assertNotNull("Labels should not be null", labels);
             assertEquals("Should have metric name", "test_metric", labels.get("__name__"));
@@ -160,9 +160,9 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, tsdbDocValues);
 
             assertNotNull("Chunks should not be null", chunks);
             assertTrue("Chunks should be empty for empty chunk data", chunks.isEmpty());
@@ -182,7 +182,7 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
 
-            IOException exception = expectThrows(IOException.class, leafReader::getMetricsDocValues);
+            IOException exception = expectThrows(IOException.class, leafReader::getTSDBDocValues);
             assertTrue("Should mention chunk field missing", exception.getMessage().contains("Chunk field '" + CHUNK + "'"));
         }
     }
@@ -206,7 +206,7 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
 
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader);
 
-            IOException exception = expectThrows(IOException.class, leafReader::getMetricsDocValues);
+            IOException exception = expectThrows(IOException.class, leafReader::getTSDBDocValues);
             assertTrue("Should mention labels field missing", exception.getMessage().contains("Labels field '" + LABELS + "'"));
         }
     }

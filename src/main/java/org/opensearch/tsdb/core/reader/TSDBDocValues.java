@@ -14,7 +14,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 /**
  * A wrapper class for holding different DocValues types for time series index so that DocValues can be used in same thread that acquired them.
  */
-public abstract class MetricsDocValues {
+public abstract class TSDBDocValues {
     /** The numeric doc values containing chunk references */
     protected NumericDocValues chunkRefDocValues;
     /** The binary doc values containing serialized chunk data */
@@ -23,24 +23,24 @@ public abstract class MetricsDocValues {
     SortedSetDocValues labelsDocValues;
 
     /**
-     * Constructor for metrics doc values with chunk reference doc values.
+     * Constructor for tsdb doc values with chunk reference doc values.
      *
      * @param chunkRefDocValues the numeric doc values containing chunk references
      * @param labelsDocValues the sorted set doc values containing labels
      */
-    public MetricsDocValues(NumericDocValues chunkRefDocValues, SortedSetDocValues labelsDocValues) {
+    public TSDBDocValues(NumericDocValues chunkRefDocValues, SortedSetDocValues labelsDocValues) {
         this.chunkDocValues = null;
         this.chunkRefDocValues = chunkRefDocValues;
         this.labelsDocValues = labelsDocValues;
     }
 
     /**
-     * Constructor for metrics doc values with binary chunk data.
+     * Constructor for tsdb doc values with binary chunk data.
      *
      * @param chunkDocValues the binary doc values containing serialized chunk data
      * @param labelsDocValues the sorted set doc values containing labels
      */
-    public MetricsDocValues(BinaryDocValues chunkDocValues, SortedSetDocValues labelsDocValues) {
+    public TSDBDocValues(BinaryDocValues chunkDocValues, SortedSetDocValues labelsDocValues) {
         this.chunkRefDocValues = null;
         this.chunkDocValues = chunkDocValues;
         this.labelsDocValues = labelsDocValues;

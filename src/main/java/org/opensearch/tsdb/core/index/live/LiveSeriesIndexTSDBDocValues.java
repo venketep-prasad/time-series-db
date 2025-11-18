@@ -10,20 +10,20 @@ package org.opensearch.tsdb.core.index.live;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 /**
- * LiveSeriesIndexMetricsDocValues is a wrapper class for holding chunk reference doc values and labels doc values for live series index.
+ * LiveSeriesIndexTSDBDocValues is a wrapper class for holding chunk reference doc values and labels doc values for live series index.
  */
-public class LiveSeriesIndexMetricsDocValues extends MetricsDocValues {
+public class LiveSeriesIndexTSDBDocValues extends TSDBDocValues {
 
     /**
-     * Constructor for live series index metrics doc values.
+     * Constructor for live series index tsdb doc values.
      *
      * @param chunkRefDocValues the numeric doc values containing chunk references
      * @param labelsDocValues the sorted set doc values containing labels
      */
-    public LiveSeriesIndexMetricsDocValues(NumericDocValues chunkRefDocValues, SortedSetDocValues labelsDocValues) {
+    public LiveSeriesIndexTSDBDocValues(NumericDocValues chunkRefDocValues, SortedSetDocValues labelsDocValues) {
         super(chunkRefDocValues, labelsDocValues);
     }
 

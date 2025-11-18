@@ -27,7 +27,7 @@ import org.opensearch.tsdb.core.chunk.ChunkAppender;
 import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.chunk.XORChunk;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -106,7 +106,7 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
         }
     }
 
-    public void testGetMetricsDocValues() throws IOException {
+    public void testGetTSDBDocValues() throws IOException {
         createTestDocument(100L, "cpu_usage", "server1", "us-west");
         indexWriter.commit();
 
@@ -115,18 +115,18 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            assertNotNull("MetricsDocValues should not be null", metricsDocValues);
-            assertTrue("Should be LiveSeriesIndexMetricsDocValues", metricsDocValues instanceof LiveSeriesIndexMetricsDocValues);
+            assertNotNull("TSDBDocValues should not be null", tsdbDocValues);
+            assertTrue("Should be LiveSeriesIndexTSDBDocValues", tsdbDocValues instanceof LiveSeriesIndexTSDBDocValues);
 
-            NumericDocValues chunkRefDocValues = metricsDocValues.getChunkRefDocValues();
-            SortedSetDocValues labelsDocValues = metricsDocValues.getLabelsDocValues();
+            NumericDocValues chunkRefDocValues = tsdbDocValues.getChunkRefDocValues();
+            SortedSetDocValues labelsDocValues = tsdbDocValues.getLabelsDocValues();
 
             assertNotNull("ChunkRefDocValues should not be null", chunkRefDocValues);
             assertNotNull("LabelsDocValues should not be null", labelsDocValues);
 
-            expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkDocValues);
+            expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkDocValues);
         }
     }
 
@@ -139,9 +139,9 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, tsdbDocValues);
 
             assertNotNull("Chunks should not be null", chunks);
             assertEquals("Should have one chunk for reference 100L", 1, chunks.size());
@@ -166,9 +166,9 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks = leafReader.chunksForDoc(0, tsdbDocValues);
 
             assertNotNull("Chunks should not be null", chunks);
             assertTrue("Chunks should be empty for reference 300L", chunks.isEmpty());
@@ -184,9 +184,9 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            Labels labels = leafReader.labelsForDoc(0, metricsDocValues);
+            Labels labels = leafReader.labelsForDoc(0, tsdbDocValues);
 
             assertNotNull("Labels should not be null", labels);
             assertEquals("Should have metric name", "cpu_usage", labels.get("__name__"));
@@ -208,7 +208,7 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
 
-            IOException exception = expectThrows(IOException.class, leafReader::getMetricsDocValues);
+            IOException exception = expectThrows(IOException.class, leafReader::getTSDBDocValues);
             assertTrue("Should mention chunk ref field missing", exception.getMessage().contains("Chunk ref field '" + REFERENCE + "'"));
         }
     }
@@ -226,7 +226,7 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
 
-            IOException exception = expectThrows(IOException.class, leafReader::getMetricsDocValues);
+            IOException exception = expectThrows(IOException.class, leafReader::getTSDBDocValues);
             assertTrue("Should mention labels field missing", exception.getMessage().contains("Labels field '" + LABELS + "'"));
         }
     }
@@ -427,20 +427,20 @@ public class LiveSeriesIndexLeafReaderTests extends OpenSearchTestCase {
             LeafReader innerReader = context.reader();
 
             LiveSeriesIndexLeafReader leafReader = new LiveSeriesIndexLeafReader(innerReader, memChunkReader);
-            MetricsDocValues metricsDocValues = leafReader.getMetricsDocValues();
+            TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
             // Test first document
-            List<ChunkIterator> chunks1 = leafReader.chunksForDoc(0, metricsDocValues);
+            List<ChunkIterator> chunks1 = leafReader.chunksForDoc(0, tsdbDocValues);
             assertEquals("Should have one chunk for doc 0", 1, chunks1.size());
 
-            Labels labels1 = leafReader.labelsForDoc(0, metricsDocValues);
+            Labels labels1 = leafReader.labelsForDoc(0, tsdbDocValues);
             assertEquals("Should have correct metric name for doc 0", "cpu_usage", labels1.get("__name__"));
 
             // Test second document
-            List<ChunkIterator> chunks2 = leafReader.chunksForDoc(1, metricsDocValues);
+            List<ChunkIterator> chunks2 = leafReader.chunksForDoc(1, tsdbDocValues);
             assertEquals("Should have one chunk for doc 1", 1, chunks2.size());
 
-            Labels labels2 = leafReader.labelsForDoc(1, metricsDocValues);
+            Labels labels2 = leafReader.labelsForDoc(1, tsdbDocValues);
             assertEquals("Should have correct metric name for doc 1", "memory_usage", labels2.get("__name__"));
         }
     }

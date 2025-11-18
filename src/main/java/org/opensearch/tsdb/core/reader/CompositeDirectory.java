@@ -24,7 +24,7 @@ import java.util.Set;
 /**
  * A composite directory that provides a unified view over multiple underlying directories.
  * Note : Technically Directory is not supposed to contain subdirectories. But this class is needed because
- * {@link MetricsDirectoryReader} needs to call {@link org.apache.lucene.index.DirectoryReader}'s constructor which requires a {@link Directory}.
+ * {@link TSDBDirectoryReader} needs to call {@link org.apache.lucene.index.DirectoryReader}'s constructor which requires a {@link Directory}.
  *
  *
  * CompositeDirectory allows querying across multiple Lucene directories as if they were

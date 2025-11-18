@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Base test case for TSDB aggregators that provides MetricsLeafReader support.
+ * Base test case for TSDB aggregators that provides TSDBLeafReader support.
  * This class extends AggregatorTestCase and overrides the testCase method to wrap
  * regular LeafReaders with ClosedChunkIndexLeafReader so that our aggregators
  * can work in unit tests.
@@ -65,11 +65,11 @@ public abstract class TimeSeriesAggregatorTestCase extends AggregatorTestCase {
     }
 
     /**
-     * Override the testCase method to provide MetricsLeafReader support.
+     * Override the testCase method to provide TSDBLeafReader support.
      * This wraps regular LeafReaders with ClosedChunkIndexLeafReader so our
      * aggregators can access time series data in tests.
      *
-     * <p>This method uses RandomIndexWriter and wraps the reader with MetricsLeafReader support.
+     * <p>This method uses RandomIndexWriter and wraps the reader with TSDBLeafReader support.
      * For tests that need direct access to ClosedChunkIndex APIs (e.g., addNewChunk), use
      * {@link #testCaseWithClosedChunkIndex} instead.</p>
      */
@@ -87,8 +87,8 @@ public abstract class TimeSeriesAggregatorTestCase extends AggregatorTestCase {
             indexWriter.close();
 
             try (DirectoryReader unwrapped = DirectoryReader.open(directory)) {
-                // Wrap the DirectoryReader to provide MetricsLeafReader functionality
-                IndexReader indexReader = wrapDirectoryReader(new MetricsDirectoryReader(unwrapped));
+                // Wrap the DirectoryReader to provide TSDBLeafReader functionality
+                IndexReader indexReader = wrapDirectoryReader(new TSDBDirectoryReader(unwrapped));
                 IndexSearcher indexSearcher = newIndexSearcher(indexReader);
 
                 V agg = searchAndReduce(indexSearcher, query, aggregationBuilder, fieldTypes);
@@ -157,9 +157,9 @@ public abstract class TimeSeriesAggregatorTestCase extends AggregatorTestCase {
             // Acquire reader from ClosedChunkIndex
             DirectoryReader unwrapped = closedChunkIndex.getDirectoryReaderManager().acquire();
             try {
-                // Wrap the DirectoryReader to provide MetricsLeafReader functionality
+                // Wrap the DirectoryReader to provide TSDBLeafReader functionality
                 // This is necessary because ClosedChunkIndex returns a standard DirectoryReader
-                MetricsDirectoryReader wrapped = new MetricsDirectoryReader(unwrapped);
+                TSDBDirectoryReader wrapped = new TSDBDirectoryReader(unwrapped);
                 IndexReader indexReader = wrapDirectoryReader(wrapped);
                 IndexSearcher indexSearcher = newIndexSearcher(indexReader);
 
@@ -183,9 +183,9 @@ public abstract class TimeSeriesAggregatorTestCase extends AggregatorTestCase {
     /**
      * Custom DirectoryReader that wraps leaf readers with ClosedChunkIndexLeafReader.
      */
-    private static class MetricsDirectoryReader extends FilterDirectoryReader {
+    private static class TSDBDirectoryReader extends FilterDirectoryReader {
 
-        public MetricsDirectoryReader(DirectoryReader in) throws IOException {
+        public TSDBDirectoryReader(DirectoryReader in) throws IOException {
             super(in, new SubReaderWrapper() {
                 @Override
                 public LeafReader wrap(LeafReader reader) {
@@ -200,7 +200,7 @@ public abstract class TimeSeriesAggregatorTestCase extends AggregatorTestCase {
 
         @Override
         protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) throws IOException {
-            return new MetricsDirectoryReader(in);
+            return new TSDBDirectoryReader(in);
         }
 
         @Override

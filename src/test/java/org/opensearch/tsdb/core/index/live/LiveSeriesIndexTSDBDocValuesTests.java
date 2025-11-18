@@ -14,35 +14,35 @@ import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
 
-public class LiveSeriesIndexMetricsDocValuesTests extends OpenSearchTestCase {
+public class LiveSeriesIndexTSDBDocValuesTests extends OpenSearchTestCase {
 
     public void testConstructorAndBasicMethods() throws IOException {
         MockNumericDocValues chunkRefDocValues = new MockNumericDocValues();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues();
 
-        LiveSeriesIndexMetricsDocValues metricsDocValues = new LiveSeriesIndexMetricsDocValues(chunkRefDocValues, labelsDocValues);
+        LiveSeriesIndexTSDBDocValues tsdbDocValues = new LiveSeriesIndexTSDBDocValues(chunkRefDocValues, labelsDocValues);
 
-        assertSame("Should return the same chunk ref doc values", chunkRefDocValues, metricsDocValues.getChunkRefDocValues());
-        assertSame("Should return the same labels doc values", labelsDocValues, metricsDocValues.getLabelsDocValues());
+        assertSame("Should return the same chunk ref doc values", chunkRefDocValues, tsdbDocValues.getChunkRefDocValues());
+        assertSame("Should return the same labels doc values", labelsDocValues, tsdbDocValues.getLabelsDocValues());
     }
 
     public void testGetChunkDocValuesThrowsException() throws IOException {
         MockNumericDocValues chunkRefDocValues = new MockNumericDocValues();
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues();
 
-        LiveSeriesIndexMetricsDocValues metricsDocValues = new LiveSeriesIndexMetricsDocValues(chunkRefDocValues, labelsDocValues);
+        LiveSeriesIndexTSDBDocValues tsdbDocValues = new LiveSeriesIndexTSDBDocValues(chunkRefDocValues, labelsDocValues);
 
-        UnsupportedOperationException exception = expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkDocValues);
+        UnsupportedOperationException exception = expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkDocValues);
         assertEquals("Live Series Index does not support chunk doc values", exception.getMessage());
     }
 
     public void testWithNullValues() throws IOException {
-        LiveSeriesIndexMetricsDocValues metricsDocValues = new LiveSeriesIndexMetricsDocValues(null, null);
+        LiveSeriesIndexTSDBDocValues tsdbDocValues = new LiveSeriesIndexTSDBDocValues(null, null);
 
-        assertNull("Should return null chunk ref doc values", metricsDocValues.getChunkRefDocValues());
-        assertNull("Should return null labels doc values", metricsDocValues.getLabelsDocValues());
+        assertNull("Should return null chunk ref doc values", tsdbDocValues.getChunkRefDocValues());
+        assertNull("Should return null labels doc values", tsdbDocValues.getLabelsDocValues());
 
-        expectThrows(UnsupportedOperationException.class, metricsDocValues::getChunkDocValues);
+        expectThrows(UnsupportedOperationException.class, tsdbDocValues::getChunkDocValues);
     }
 
     public void testWithRealValues() throws IOException {
@@ -51,7 +51,7 @@ public class LiveSeriesIndexMetricsDocValuesTests extends OpenSearchTestCase {
 
         MockSortedSetDocValues labelsDocValues = new MockSortedSetDocValues();
 
-        LiveSeriesIndexMetricsDocValues metricsDocValues = new LiveSeriesIndexMetricsDocValues(chunkRefDocValues, labelsDocValues);
+        LiveSeriesIndexTSDBDocValues tsdbDocValues = new LiveSeriesIndexTSDBDocValues(chunkRefDocValues, labelsDocValues);
 
         // Test that we can actually use the doc values
         assertTrue("Should advance to document", chunkRefDocValues.advanceExact(0));

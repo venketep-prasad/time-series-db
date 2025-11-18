@@ -31,8 +31,8 @@ import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.index.IndexUtils;
 import org.opensearch.tsdb.core.mapping.Constants;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.reader.MetricsDocValues;
-import org.opensearch.tsdb.core.reader.MetricsLeafReader;
+import org.opensearch.tsdb.core.reader.TSDBDocValues;
+import org.opensearch.tsdb.core.reader.TSDBLeafReader;
 
 import java.io.IOException;
 import java.util.List;
@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
  * This specialized leaf reader provides access to live time series data stored in the index,
  * extending the sequential stored fields reader to handle time series-specific data access patterns.
  */
-public class LiveSeriesIndexLeafReader extends MetricsLeafReader {
+public class LiveSeriesIndexLeafReader extends TSDBLeafReader {
 
     private final LeafReader inner;
     private final MemChunkReader memChunkReader;
@@ -52,6 +52,7 @@ public class LiveSeriesIndexLeafReader extends MetricsLeafReader {
 
     /**
      * Constructs a LiveSeriesIndexLeafReader that provides access to live time series data.
+     *
      *
      * @param inner the underlying LeafReader to wrap
      * @param memChunkReader read memchunks given a reference
@@ -65,7 +66,7 @@ public class LiveSeriesIndexLeafReader extends MetricsLeafReader {
     }
 
     @Override
-    public MetricsDocValues getMetricsDocValues() throws IOException {
+    public TSDBDocValues getTSDBDocValues() throws IOException {
         try {
 
             NumericDocValues chunkRefValues = this.getNumericDocValues(Constants.IndexSchema.REFERENCE);
@@ -76,16 +77,16 @@ public class LiveSeriesIndexLeafReader extends MetricsLeafReader {
             if (labelsDocValues == null) {
                 throw new IOException("Labels field '" + Constants.IndexSchema.LABELS + "' not found in live series index.");
             }
-            return new LiveSeriesIndexMetricsDocValues(chunkRefValues, labelsDocValues);
+            return new LiveSeriesIndexTSDBDocValues(chunkRefValues, labelsDocValues);
         } catch (IOException e) {
-            throw new IOException("Error accessing MetricsDocValues in LiveSeriesIndexLeafReader: " + e.getMessage(), e);
+            throw new IOException("Error accessing TSDBDocValues in LiveSeriesIndexLeafReader: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public List<ChunkIterator> chunksForDoc(int docId, MetricsDocValues metricsDocValues) throws IOException {
+    public List<ChunkIterator> chunksForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
         // TODO : Exclude already mapped chunks from results
-        NumericDocValues chunkRefValues = metricsDocValues.getChunkRefDocValues();
+        NumericDocValues chunkRefValues = tsdbDocValues.getChunkRefDocValues();
         if (!chunkRefValues.advanceExact(docId)) {
             return List.of();
         }
@@ -97,8 +98,8 @@ public class LiveSeriesIndexLeafReader extends MetricsLeafReader {
     }
 
     @Override
-    public Labels labelsForDoc(int docId, MetricsDocValues metricsDocValues) throws IOException {
-        return IndexUtils.labelsForDoc(docId, metricsDocValues);
+    public Labels labelsForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
+        return IndexUtils.labelsForDoc(docId, tsdbDocValues);
     }
 
     @Override
