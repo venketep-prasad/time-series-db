@@ -98,14 +98,45 @@ public class HistogramPercentilePlanNodeTests extends BasePlanNodeTests {
         expectThrows(IllegalArgumentException.class, () -> HistogramPercentilePlanNode.of(functionNode));
     }
 
-    public void testHistogramPercentilePlanNodeFactoryMethodThrowsOnZeroPercentile() {
+    public void testHistogramPercentilePlanNodeFactoryMethodAcceptsZeroPercentile() {
+        // Test that 0.0 is a valid percentile (boundary case - minimum value)
         FunctionNode functionNode = new FunctionNode();
         functionNode.setFunctionName("histogramPercentile");
         functionNode.addChildNode(new ValueNode("bucket_id"));
         functionNode.addChildNode(new ValueNode("bucket_range"));
         functionNode.addChildNode(new ValueNode("0.0"));
 
+        HistogramPercentilePlanNode node = HistogramPercentilePlanNode.of(functionNode);
+
+        assertEquals("bucket_id", node.getBucketId());
+        assertEquals("bucket_range", node.getBucketRange());
+        assertEquals(List.of(0.0f), node.getPercentiles());
+    }
+
+    public void testHistogramPercentilePlanNodeFactoryMethodThrowsOnNegativePercentile() {
+        // Test that negative percentiles are rejected
+        FunctionNode functionNode = new FunctionNode();
+        functionNode.setFunctionName("histogramPercentile");
+        functionNode.addChildNode(new ValueNode("bucket_id"));
+        functionNode.addChildNode(new ValueNode("bucket_range"));
+        functionNode.addChildNode(new ValueNode("-1.0"));
+
         expectThrows(IllegalArgumentException.class, () -> HistogramPercentilePlanNode.of(functionNode));
+    }
+
+    public void testHistogramPercentilePlanNodeFactoryMethodAccepts100Percentile() {
+        // Test that 100.0 is a valid percentile (boundary case)
+        FunctionNode functionNode = new FunctionNode();
+        functionNode.setFunctionName("histogramPercentile");
+        functionNode.addChildNode(new ValueNode("bucket_id"));
+        functionNode.addChildNode(new ValueNode("bucket_range"));
+        functionNode.addChildNode(new ValueNode("100.0"));
+
+        HistogramPercentilePlanNode node = HistogramPercentilePlanNode.of(functionNode);
+
+        assertEquals("bucket_id", node.getBucketId());
+        assertEquals("bucket_range", node.getBucketRange());
+        assertEquals(List.of(100.0f), node.getPercentiles());
     }
 
     public void testHistogramPercentilePlanNodeFactoryMethodThrowsOnNonNumericPercentile() {

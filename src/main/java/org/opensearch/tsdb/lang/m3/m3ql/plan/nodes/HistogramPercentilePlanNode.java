@@ -110,8 +110,8 @@ public class HistogramPercentilePlanNode extends M3PlanNode {
             String percentileStr = valueNode.getValue();
             try {
                 float percentile = Float.parseFloat(percentileStr);
-                if (percentile <= 0 || percentile >= 100) {
-                    throw new IllegalArgumentException("Percentiles must be between 0 and 100, got: " + percentile);
+                if (percentile < 0 || percentile > 100) {
+                    throw new IllegalArgumentException("Percentiles must be between 0 and 100 (inclusive), got: " + percentile);
                 }
                 percentiles.add(percentile);
             } catch (NumberFormatException e) {
