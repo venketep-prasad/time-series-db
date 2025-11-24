@@ -26,7 +26,7 @@ jobs:
     steps:
     - name: Run start commands
       run: ${{ needs.Get-CI-Image-Tag.outputs.ci-image-start-command }}
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up JDK
@@ -57,7 +57,7 @@ jobs:
     name: Test & Upload Code Coverage
     needs: build
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up JDK
