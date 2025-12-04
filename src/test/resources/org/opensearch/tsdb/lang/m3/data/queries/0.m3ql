@@ -12,4 +12,5 @@ region:{us-*,ca}
 | keepLastValue
 | >= 5
 | count
+| excludeByTag env "prod.*" "staging"
 | alias {{.region}}

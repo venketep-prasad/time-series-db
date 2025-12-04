@@ -52,6 +52,11 @@ public class Constants {
         public static final String ALIAS_BY_TAGS = "aliasByTags";
 
         /**
+         * excludeByTag function name.
+         */
+        public static final String EXCLUDE_BY_TAG = "excludeByTag";
+
+        /**
          * fallbackSeries function name.
          */
         public static final String FALLBACK_SERIES = "fallbackSeries";

@@ -23,6 +23,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AsPercentPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.BinaryPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ExcludeByTagPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesBinaryPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
@@ -188,6 +189,50 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
 
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
         assertEquals("AliasByTagsPlanNode must have exactly one child", exception.getMessage());
+    }
+
+    /**
+     * Test ExcludeByTagPlanNode with correct number of children (1).
+     */
+    public void testExcludeByTagPlanNodeWithOneChild() {
+        ExcludeByTagPlanNode planNode = new ExcludeByTagPlanNode(1, "env", List.of("production"));
+        planNode.addChild(createMockFetchNode(2));
+
+        // Should not throw an exception
+        assertNotNull(visitor.visit(planNode));
+    }
+
+    /**
+     * Test ExcludeByTagPlanNode with multiple patterns.
+     */
+    public void testExcludeByTagPlanNodeWithMultiplePatterns() {
+        ExcludeByTagPlanNode planNode = new ExcludeByTagPlanNode(1, "region", List.of("us-.*", "eu-prod"));
+        planNode.addChild(createMockFetchNode(2));
+
+        // Should not throw an exception
+        assertNotNull(visitor.visit(planNode));
+    }
+
+    /**
+     * Test ExcludeByTagPlanNode with incorrect number of children (0).
+     */
+    public void testExcludeByTagPlanNodeWithNoChildren() {
+        ExcludeByTagPlanNode planNode = new ExcludeByTagPlanNode(1, "env", List.of("production"));
+
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
+        assertEquals("ExcludeByTagPlanNode must have exactly one child", exception.getMessage());
+    }
+
+    /**
+     * Test ExcludeByTagPlanNode with incorrect number of children (2).
+     */
+    public void testExcludeByTagPlanNodeWithTwoChildren() {
+        ExcludeByTagPlanNode planNode = new ExcludeByTagPlanNode(1, "env", List.of("production"));
+        planNode.addChild(createMockFetchNode(2));
+        planNode.addChild(createMockFetchNode(3));
+
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> visitor.visit(planNode));
+        assertEquals("ExcludeByTagPlanNode must have exactly one child", exception.getMessage());
     }
 
     /**

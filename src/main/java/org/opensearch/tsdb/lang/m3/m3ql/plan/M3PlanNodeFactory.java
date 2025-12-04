@@ -14,6 +14,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AbsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AggregationPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasByTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AliasPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ExcludeByTagPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesConstantPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ValueFilterPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FetchPlanNode;
@@ -60,6 +61,8 @@ public class M3PlanNodeFactory {
                 return AliasPlanNode.of(functionNode);
             case Constants.Functions.ALIAS_BY_TAGS:
                 return AliasByTagsPlanNode.of(functionNode);
+            case Constants.Functions.EXCLUDE_BY_TAG:
+                return ExcludeByTagPlanNode.of(functionNode);
             case Constants.Functions.FALLBACK_SERIES:
                 return FallbackSeriesConstantPlanNode.of(functionNode);
             case Constants.Functions.FETCH:

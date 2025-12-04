@@ -20,11 +20,13 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AbsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.AsPercentPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DiffPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.DividePlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ExcludeByTagPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.FallbackSeriesBinaryPlanNode;
 import org.opensearch.tsdb.lang.m3.stage.AbsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasByTagsStage;
 import org.opensearch.tsdb.lang.m3.stage.AliasStage;
 import org.opensearch.tsdb.lang.m3.stage.AsPercentStage;
+import org.opensearch.tsdb.lang.m3.stage.ExcludeByTagStage;
 import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesBinaryStage;
 import org.opensearch.tsdb.lang.m3.stage.FallbackSeriesUnaryStage;
 import org.opensearch.tsdb.lang.m3.stage.AvgStage;
@@ -249,6 +251,13 @@ public class SourceBuilderVisitor extends M3PlanVisitor<SourceBuilderVisitor.Com
         validateChildCountExact(planNode, 2);
 
         return unionAndBinaryHandler(planNode);
+    }
+
+    @Override
+    public ComponentHolder visit(ExcludeByTagPlanNode planNode) {
+        validateChildCountExact(planNode, 1);
+        stageStack.add(new ExcludeByTagStage(planNode.getTagName(), planNode.getPatterns()));
+        return planNode.getChildren().getFirst().accept(this);
     }
 
     @Override

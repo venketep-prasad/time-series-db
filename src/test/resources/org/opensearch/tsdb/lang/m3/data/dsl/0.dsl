@@ -113,6 +113,14 @@
             "type" : "count"
           },
           {
+            "type" : "exclude_by_tag",
+            "tag_name" : "env",
+            "patterns" : [
+              "prod.*",
+              "staging"
+            ]
+          },
+          {
             "type" : "alias",
             "pattern" : "{{.region}}"
           },

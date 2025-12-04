@@ -31,7 +31,6 @@ import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.index.IndexSettings;
 import org.opensearch.index.mapper.KeywordFieldMapper;
 import org.opensearch.index.mapper.MapperService;
-import org.opensearch.index.mapper.NumberFieldMapper;
 import org.opensearch.index.mapper.RangeFieldMapper;
 import org.opensearch.index.mapper.RangeType;
 import org.opensearch.search.aggregations.AggregatorFactories;
@@ -355,8 +354,10 @@ public class LeafPruningBenchmark extends BaseTSDBBenchmark {
         // Add TSDB field mappings so rewrite works correctly
         KeywordFieldMapper.KeywordFieldType labelsFieldType = new KeywordFieldMapper.KeywordFieldType(Constants.IndexSchema.LABELS);
 
-        RangeFieldMapper.RangeFieldType timestampRangeFieldType =
-            new RangeFieldMapper.RangeFieldType(Constants.IndexSchema.TIMESTAMP_RANGE, RangeType.LONG);
+        RangeFieldMapper.RangeFieldType timestampRangeFieldType = new RangeFieldMapper.RangeFieldType(
+            Constants.IndexSchema.TIMESTAMP_RANGE,
+            RangeType.LONG
+        );
 
         // Use anyString() to catch all field lookups and return appropriate field types
         when(mapperService.fieldType(anyString())).thenAnswer(invocation -> {
