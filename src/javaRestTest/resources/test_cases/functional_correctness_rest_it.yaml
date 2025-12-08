@@ -39,6 +39,19 @@ test_case:
         values: [26, 28, 31, 16, 12, 6, -2, 12, null, 2]
   # M3QL queries with expected results
   queries:
+    - name: "raw fetch to test rebucket in UnfoldAggregator"
+      type: "m3ql"
+      indices: "functional_correctness_test"
+      query: "fetch method:POST status:500 name:http_requests_seriesD"
+      time_config:
+        min_timestamp: "2025-01-01T01:03:00Z"
+        max_timestamp: "2025-01-01T02:40:00Z"
+        step: "10m"
+      expected:
+         status: "success"
+         data:
+         - metric: { name: "http_requests_seriesD", method: "POST", status: "500" }
+           values: [28, 31, 16, 12, 6, -2, 12, null, 2]
     - name: "complex pipeline - eq filter with transformNull and sort"
       type: "m3ql"
       indices: "functional_correctness_test"

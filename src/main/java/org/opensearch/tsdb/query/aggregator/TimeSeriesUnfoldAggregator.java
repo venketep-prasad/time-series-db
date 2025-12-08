@@ -277,25 +277,25 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 return;
             }
 
-            // Round timestamps to step boundaries and deduplicate
+            // Align timestamps to step boundaries and deduplicate
             // Preallocate based on actual sample count
-            List<Sample> roundedSamples = new ArrayList<>(allSamples.size());
-            long lastRoundedTimestamp = Long.MIN_VALUE;
+            List<Sample> alignedSamples = new ArrayList<>(allSamples.size());
+            long lastAlignedTimestamp = Long.MIN_VALUE;
             for (Sample sample : allSamples) {
-                // Align timestamp to minTimestamp instead of 0
-                long roundedTimestamp = minTimestamp + Math.round((double) (sample.getTimestamp() - minTimestamp) / step) * step;
+                // Align timestamp to minTimestamp using floor (integer division)
+                long alignedTimestamp = minTimestamp + ((sample.getTimestamp() - minTimestamp) / step) * step;
                 // decodeSamples() always returns FloatSample instances
                 FloatSample floatSample = (FloatSample) sample;
 
-                // Deduplicate: only keep the latest sample for each rounded timestamp
-                // Since allSamples is sorted, we can just compare with the previous rounded timestamp
-                if (roundedTimestamp != lastRoundedTimestamp) {
-                    roundedSamples.add(new FloatSample(roundedTimestamp, floatSample.getValue()));
-                    lastRoundedTimestamp = roundedTimestamp;
+                // Deduplicate: only keep the latest sample for each aligned timestamp
+                // Since allSamples is sorted, we can just compare with the previous aligned timestamp
+                if (alignedTimestamp != lastAlignedTimestamp) {
+                    alignedSamples.add(new FloatSample(alignedTimestamp, floatSample.getValue()));
+                    lastAlignedTimestamp = alignedTimestamp;
                 } else {
-                    // Overwrite the previous sample with the same rounded timestamp
+                    // Overwrite the previous sample with the same aligned timestamp
                     // This keeps the latest sample (ANY_WINS policy)
-                    roundedSamples.set(roundedSamples.size() - 1, new FloatSample(roundedTimestamp, floatSample.getValue()));
+                    alignedSamples.set(alignedSamples.size() - 1, new FloatSample(alignedTimestamp, floatSample.getValue()));
                 }
             }
 
@@ -329,7 +329,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 // Assume data points within each chunk are sorted by timestamp
                 List<Sample> mergedSamples = MERGE_HELPER.merge(
                     existingSeries.getSamples(),
-                    roundedSamples,
+                    alignedSamples,
                     true // assumeSorted - data points within each chunk are sorted
                 );
 
@@ -347,10 +347,10 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                     )
                 );
             } else {
-                // Create new time series with rounded samples and labels
+                // Create new time series with aligned samples and labels
                 // No need to sort - samples within each chunk are already sorted by timestamp
                 // Use theoreticalMaxTimestamp (calculated from query params) instead of query maxTimestamp
-                TimeSeries newSeries = new TimeSeries(roundedSamples, labels, minTimestamp, theoreticalMaxTimestamp, step, null);
+                TimeSeries newSeries = new TimeSeries(alignedSamples, labels, minTimestamp, theoreticalMaxTimestamp, step, null);
 
                 bucketSeries.add(newSeries);
             }
