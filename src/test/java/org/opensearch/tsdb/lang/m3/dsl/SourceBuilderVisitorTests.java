@@ -38,6 +38,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.PerSecondRatePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.RemoveEmptyPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ScalePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ScaleToSecondsPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ShowTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SortPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SummarizePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.TimeshiftPlanNode;
@@ -579,6 +580,13 @@ public class SourceBuilderVisitorTests extends OpenSearchTestCase {
         planNode.addChild(createMockFetchNode(2));
 
         // Should not throw an exception
+        assertNotNull(visitor.visit(planNode));
+    }
+
+    public void testShowTagsPlanNodeWithOneChild() {
+        ShowTagsPlanNode planNode = new ShowTagsPlanNode(1, true, List.of("tag1", "tag2"));
+        planNode.addChild(createMockFetchNode(2));
+
         assertNotNull(visitor.visit(planNode));
     }
 

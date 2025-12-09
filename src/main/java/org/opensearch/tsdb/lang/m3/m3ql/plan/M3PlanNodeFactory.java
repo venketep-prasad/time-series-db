@@ -29,6 +29,7 @@ import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.PercentileOfSeriesPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.RemoveEmptyPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ScalePlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ScaleToSecondsPlanNode;
+import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.ShowTagsPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SortPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SustainPlanNode;
 import org.opensearch.tsdb.lang.m3.m3ql.plan.nodes.SummarizePlanNode;
@@ -63,6 +64,8 @@ public class M3PlanNodeFactory {
                 return AliasByTagsPlanNode.of(functionNode);
             case Constants.Functions.EXCLUDE_BY_TAG:
                 return ExcludeByTagPlanNode.of(functionNode);
+            case Constants.Functions.SHOW_TAGS:
+                return ShowTagsPlanNode.of(functionNode);
             case Constants.Functions.FALLBACK_SERIES:
                 return FallbackSeriesConstantPlanNode.of(functionNode);
             case Constants.Functions.FETCH:

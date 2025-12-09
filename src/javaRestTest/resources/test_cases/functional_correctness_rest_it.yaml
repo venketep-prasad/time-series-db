@@ -151,3 +151,18 @@ test_case:
           data:
             - metric: {}
               values: [1.375, 1.5, 1.625, 1.75, 1.875, 0, 0, 0, 0, 0]
+    - name: "showTags query"
+      type: "m3ql"
+      indices: "functional_correctness_test"
+      query: "fetch method:POST | showTags true status method"
+      time_config:
+        min_timestamp: "2025-01-01T01:00:00Z"
+        max_timestamp: "2025-01-01T02:40:00Z"
+        step: "10m"
+      expected:
+        status: "success"
+        data:
+          - metric: { __name__: "status:200 method:POST", name: http_requests_seriesC, method: POST, status: "200" }
+            values: [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10]
+          - metric: { __name__: "status:500 method:POST", name: http_requests_seriesD, method: POST, status: "500" }
+            values: [26, 28, 31, 16, 12, 6, -2, 12, null, 2]

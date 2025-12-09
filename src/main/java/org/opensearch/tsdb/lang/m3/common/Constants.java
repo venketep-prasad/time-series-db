@@ -52,6 +52,11 @@ public class Constants {
         public static final String ALIAS_BY_TAGS = "aliasByTags";
 
         /**
+         * showTags function name.
+         */
+        public static final String SHOW_TAGS = "showTags";
+
+        /**
          * excludeByTag function name.
          */
         public static final String EXCLUDE_BY_TAG = "excludeByTag";

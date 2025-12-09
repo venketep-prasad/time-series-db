@@ -52,13 +52,8 @@ curl -X PUT -H 'Content-Type: application/json' http://localhost:9200/my-index -
          "format": "epoch_millis",
          "doc_values": false
      },
-     "min_timestamp": {
-       "type": "long",
-       "doc_values": false
-     },
-     "max_timestamp": {
-       "type": "long",
-       "doc_values": false
+     "timestamp_range": {
+         "type": "long_range"
      }
    }
  }
@@ -80,17 +75,17 @@ curl -X POST -H 'Content-Type: application/json' http://localhost:9200/my-index/
 { "index": { "_index": "my-index" } }
 { "labels": "__name__ http_requests_total method POST handler /api/items status 200", "timestamp": 1633072800000, "value": 1.1 }
 { "index": { "_index": "my-index" } }
+{ "labels": "__name__ http_requests_total method POST handler /api/stores status 200", "timestamp": 1633072800000, "value": 2.1 }
+{ "index": { "_index": "my-index" } }
 { "labels": "__name__ http_requests_total method POST handler /api/items status 200", "timestamp": 1633076400000, "value": 1.2 }
+{ "index": { "_index": "my-index" } }
+{ "labels": "__name__ http_requests_total method POST handler /api/stores status 200", "timestamp": 1633076400000, "value": 2.2 }
 { "index": { "_index": "my-index" } }
 { "labels": "__name__ http_requests_total method POST handler /api/items status 200", "timestamp": 1633076500000, "value": 1.3 }
 { "index": { "_index": "my-index" } }
 { "labels": "__name__ http_requests_total method POST handler /api/items status 200", "timestamp": 1633076600000, "value": 1.4 }
 { "index": { "_index": "my-index" } }
 { "labels": "__name__ http_requests_total method POST handler /api/items status 200", "timestamp": 1633076700000, "value": 1.5 }
-{ "index": { "_index": "my-index" } }
-{ "labels": "__name__ http_requests_total method POST handler /api/stores status 200", "timestamp": 1633072800000, "value": 2.1 }
-{ "index": { "_index": "my-index" } }
-{ "labels": "__name__ http_requests_total method POST handler /api/stores status 200", "timestamp": 1633076400000, "value": 2.2 }
 '
 ```
 
@@ -126,6 +121,8 @@ curl -X POST -H 'Content-Type: application/json' http://localhost:9200/my-index/
   "timestamp":1633076700000
 }'
 ```
+Note that if you want to index both series like this, you will need to make the API calls sorted by timestamp (instead
+of by series), because the engine expects that samples will not arrive significantly out of order (even across series).
 ```bash
 curl -X POST -H 'Content-Type: application/json' http://localhost:9200/my-index/_doc --data '{
   "labels":"__name__ http_requests_total method POST handler /api/stores status 200",
@@ -149,7 +146,9 @@ curl -XGET http://localhost:9200/my-index/_flush
 curl -XGET http://localhost:9200/my-index/_refresh
 ```
 
-## Query the metrics
+## Query the raw metrics using OpenSearch DSL
+Note: this only works if index.tsdb_engine.labels.storage_type is configured as `sorted_set` (does not work if it's `binary` type).
+For binary type, you should use the language APIs like M3QL or PPL to query the data, which has custom decoding logic for binary label storage.
 
 Query all
 ```bash
