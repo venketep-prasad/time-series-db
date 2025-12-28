@@ -136,6 +136,9 @@ public class CachedWildcardQueryBuilder extends WildcardQueryBuilder {
         // Delegate to parent's fromXContent to parse the wildcard query
         WildcardQueryBuilder wildcardBuilder = WildcardQueryBuilder.fromXContent(parser);
 
+        // Consume the END_OBJECT token that closes the "wildcard" field
+        parser.nextToken();
+
         // Create CachedWildcardQueryBuilder with the same parameters
         CachedWildcardQueryBuilder builder = new CachedWildcardQueryBuilder(wildcardBuilder.fieldName(), wildcardBuilder.value());
 
