@@ -123,7 +123,7 @@ publishing {
 spotless {
   java {
     licenseHeaderFile 'formatter/license-header.txt'
-    targetExclude '**/package-info.java'
+    targetExclude '**/package-info.java', '**/generated/**'
   }
 }
 
@@ -245,11 +245,13 @@ task internalClusterTest(type: Test) {
 // Make integTest depend on javaRestTest and internalClusterTest so all integration tests run together
 integTest.dependsOn javaRestTest, internalClusterTest
 
-String javaccGrammarPath = 'src/main/java/org/opensearch/tsdb/lang/m3/m3ql/parser'
-String javaccOutputPath = 'src/main/java/org/opensearch/tsdb/lang/m3/m3ql/parser/generated'
+String m3JavaccGrammarPath = 'src/main/java/org/opensearch/tsdb/lang/m3/m3ql/parser'
+String m3JavaccOutputPath = 'src/main/java/org/opensearch/tsdb/lang/m3/m3ql/parser/generated'
+String promJavaccGrammarPath = 'src/main/java/org/opensearch/tsdb/lang/prom/promql/parser'
+String promJavaccOutputPath = 'src/main/java/org/opensearch/tsdb/lang/prom/promql/parser/generated'
 
 javadoc {
-  source = sourceSets.main.allJava + fileTree(javaccOutputPath)
+  source = sourceSets.main.allJava + fileTree(m3JavaccOutputPath) + fileTree(promJavaccOutputPath)
   options.addStringOption('Xdoclint:all,-missing', '-Xwerror')
   exclude '**/generated/**'
   dependsOn('generateJavaCC')
@@ -360,18 +362,32 @@ dependencies {
 }
 
 tasks.register("cleanJavaCCGenerated", Delete) {
-    delete fileTree(javaccOutputPath) {
+    delete fileTree(m3JavaccOutputPath) {
+        include '*.java'
+    }
+    delete fileTree(promJavaccOutputPath) {
         include '*.java'
     }
 }
 
-tasks.register("generateJavaCC", JavaExec) {
-    dependsOn "cleanJavaCCGenerated", "spotlessApply", "spotlessCheck"
+tasks.register("generateM3JavaCC", JavaExec) {
     mainClass = 'javacc'
     classpath = configurations.javacc
     systemProperty 'file.encoding', 'UTF-8'
-    args '-OUTPUT_DIRECTORY=' + javaccOutputPath,
-            "${file(javaccGrammarPath)}/m3ql.jj"
+    args '-OUTPUT_DIRECTORY=' + m3JavaccOutputPath,
+            "${file(m3JavaccGrammarPath)}/m3ql.jj"
+}
+
+tasks.register("generatePromJavaCC", JavaExec) {
+    mainClass = 'javacc'
+    classpath = configurations.javacc
+    systemProperty 'file.encoding', 'UTF-8'
+    args '-OUTPUT_DIRECTORY=' + promJavaccOutputPath,
+            "${file(promJavaccGrammarPath)}/promql.jj"
+}
+
+tasks.register("generateJavaCC") {
+    dependsOn "cleanJavaCCGenerated", "generateM3JavaCC", "generatePromJavaCC", "spotlessApply", "spotlessCheck"
 }
 
 compileJava.dependsOn generateJavaCC
@@ -384,20 +400,25 @@ tasks.named("dependencyLicenses").configure {
 // Exclude generated files from forbidden APIs check
 forbiddenApisMain {
     exclude 'org/opensearch/tsdb/lang/m3/m3ql/parser/generated/**'
+    exclude 'org/opensearch/tsdb/lang/prom/promql/parser/generated/**'
 }
 
 forbiddenApisTest {
     exclude 'org/opensearch/tsdb/lang/m3/m3ql/parser/generated/**'
+    exclude 'org/opensearch/tsdb/lang/prom/promql/parser/generated/**'
 }
 
 forbiddenApisJavaRestTest {
     exclude 'org/opensearch/tsdb/lang/m3/m3ql/parser/generated/**'
+    exclude 'org/opensearch/tsdb/lang/prom/promql/parser/generated/**'
 }
 
 forbiddenApisInternalClusterTest {
     exclude 'org/opensearch/tsdb/lang/m3/m3ql/parser/generated/**'
+    exclude 'org/opensearch/tsdb/lang/prom/promql/parser/generated/**'
 }
 
 forbiddenPatterns {
     exclude 'org/opensearch/tsdb/lang/m3/m3ql/parser/generated/**'
+    exclude 'org/opensearch/tsdb/lang/prom/promql/parser/generated/**'
 }

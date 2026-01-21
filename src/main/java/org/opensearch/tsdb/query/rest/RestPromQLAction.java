@@ -26,10 +26,9 @@ import org.opensearch.transport.client.node.NodeClient;
 import java.util.HashMap;
 import java.util.Map;
 import org.opensearch.tsdb.core.utils.Constants;
-import org.opensearch.tsdb.lang.m3.dsl.M3OSTranslator;
+import org.opensearch.tsdb.lang.prom.dsl.PromOSTranslator;
 import org.opensearch.tsdb.metrics.TSDBMetrics;
 import org.opensearch.tsdb.metrics.TSDBMetricsConstants;
-import org.opensearch.tsdb.query.federation.FederationMetadata;
 import org.opensearch.tsdb.query.utils.AggregationNameExtractor;
 
 import java.io.IOException;
@@ -39,95 +38,101 @@ import static org.opensearch.rest.RestRequest.Method.GET;
 import static org.opensearch.rest.RestRequest.Method.POST;
 
 /**
- * REST handler for M3QL queries.
+ * REST handler for PromQL queries.
  *
- * <p>This handler translates M3QL queries to OpenSearch DSL and executes them,
- * returning results in Prometheus matrix format. It provides a simple interface
- * for executing M3QL queries over time series data stored in OpenSearch.</p>
+ * <p>This handler translates PromQL queries to OpenSearch DSL and executes them,
+ * returning results in Prometheus-compatible format. It supports both instant queries
+ * (single point in time) and range queries (over a time range).</p>
  *
  * <h2>Supported Routes:</h2>
  * <ul>
- *   <li>GET/POST /_m3ql - Execute M3QL query (use 'partitions' param for specific indices)</li>
+ *   <li><b>GET/POST /_promql/query</b> - Instant query (evaluate at single point in time)</li>
+ *   <li><b>GET/POST /_promql/query_range</b> - Range query (evaluate over time range)</li>
  * </ul>
  *
- * <h2>Request Parameters:</h2>
+ * <h2>Instant Query Parameters (/_promql/query):</h2>
  * <ul>
- *   <li><b>query</b> (required): M3QL query string (can be in body or URL param)</li>
- *   <li><b>start</b> (optional): Start time (default: "now-5m")</li>
- *   <li><b>end</b> (optional): End time (default: "now")</li>
- *   <li><b>step</b> (optional): Step interval in milliseconds (default: 10000)</li>
+ *   <li><b>query</b> (required): Prometheus expression query string</li>
+ *   <li><b>time</b> (optional): Evaluation timestamp (RFC3339 or Unix timestamp). Defaults to current time</li>
+ *   <li><b>timeout</b> (optional): Evaluation timeout duration (e.g., "30s", "1m")</li>
+ *   <li><b>limit</b> (optional): Maximum number of returned series (0 = disabled)</li>
+ *   <li><b>lookback_delta</b> (optional): Override lookback period for this query</li>
  *   <li><b>partitions</b> (optional): Comma-separated list of indices to query</li>
  *   <li><b>explain</b> (optional): Return translated DSL instead of executing (default: false)</li>
  *   <li><b>pushdown</b> (optional): Enable pushdown optimizations (default: true)</li>
- *   <li><b>include_metadata</b> (optional): Include metadata (step, start, end) for each time series (default: false)</li>
- *   <li><b>resolved_partitions</b> (optional, body only): Federation partition resolution info</li>
+ * </ul>
+ *
+ * <h2>Range Query Parameters (/_promql/query_range):</h2>
+ * <ul>
+ *   <li><b>query</b> (required): Prometheus expression query string</li>
+ *   <li><b>start</b> (required): Start timestamp (RFC3339 or Unix timestamp)</li>
+ *   <li><b>end</b> (required): End timestamp (RFC3339 or Unix timestamp)</li>
+ *   <li><b>step</b> (required): Query resolution step width (duration string or seconds)</li>
+ *   <li><b>timeout</b> (optional): Evaluation timeout duration (e.g., "30s", "1m")</li>
+ *   <li><b>limit</b> (optional): Maximum number of returned series (0 = disabled)</li>
+ *   <li><b>lookback_delta</b> (optional): Override lookback period for this query</li>
+ *   <li><b>partitions</b> (optional): Comma-separated list of indices to query</li>
+ *   <li><b>explain</b> (optional): Return translated DSL instead of executing (default: false)</li>
+ *   <li><b>pushdown</b> (optional): Enable pushdown optimizations (default: true)</li>
+ *   <li><b>include_metadata</b> (optional): Include metadata for each time series (default: false)</li>
  * </ul>
  *
  * <h2>Request Body (JSON):</h2>
  * <pre>{@code
  * {
- *   "query": "fetch service:api | moving 5m sum",
- *   "resolved_partitions": {
- *     "partitions": [
- *       {
- *         "fetch_statement": "service:api",
- *         "partition_windows": [
- *           {
- *             "partition_id": "cluster1:index-a",
- *             "start": "2025-12-13T00:44:49Z",
- *             "end": "2025-12-13T02:14:49Z",
- *             "routing_keys": [
- *               {"key": "service", "value": "api"},
- *               {"key": "region", "value": "us-west"}
- *             ]
- *           }
- *         ]
- *       }
- *     ]
- *   }
+ *   "query": "sum by (job) (rate(http_requests_total[5m]))"
  * }
  * }</pre>
  *
  * <h2>Response Format:</h2>
- * <p>Returns Prometheus matrix format (see {@link PromMatrixResponseListener})</p>
+ * <ul>
+ *   <li>Instant queries return <code>vector</code> result type</li>
+ *   <li>Range queries return <code>matrix</code> result type</li>
+ * </ul>
  *
- * @see M3OSTranslator
+ * @see PromOSTranslator
  * @see PromMatrixResponseListener
  */
-public class RestM3QLAction extends BaseTSDBAction {
-    public static final String NAME = "m3ql_action";
+public class RestPromQLAction extends BaseTSDBAction {
+    public static final String NAME = "promql_action";
 
-    private static final Logger logger = LogManager.getLogger(RestM3QLAction.class);
+    private static final Logger logger = LogManager.getLogger(RestPromQLAction.class);
 
-    // Route path
-    private static final String BASE_M3QL_PATH = "/_m3ql";
+    // Route paths
+    private static final String INSTANT_QUERY_PATH = "/_promql/query";
+    private static final String RANGE_QUERY_PATH = "/_promql/query_range";
 
-    // M3QL-specific parameter names
-    private static final String RESOLVED_PARTITIONS_PARAM = "resolved_partitions";
+    // PromQL-specific parameter names
+    private static final String TIME_PARAM = "time";
+    // TODO add support
+    private static final String TIMEOUT_PARAM = "timeout";
+    // TODO add support
+    private static final String LIMIT_PARAM = "limit";
+    private static final String LOOKBACK_DELTA_PARAM = "lookback_delta";
 
     // Default parameter values
     private static final String DEFAULT_START_TIME = "now-5m";
     private static final String DEFAULT_END_TIME = "now";
     private static final long DEFAULT_STEP_MS = 10_000L; // 10 seconds
 
-    // M3QL-specific response field names
-    private static final String M3QL_QUERY_FIELD = "m3ql_query";
+    // PromQL-specific response field names
+    private static final String PROMQL_QUERY_FIELD = "promql_query";
     private static final String TRANSLATED_DSL_FIELD = "translated_dsl";
     private static final String EXPLANATION_FIELD = "explanation";
 
     private static final Metrics METRICS = new Metrics();
 
     /**
-     * Constructs a new RestM3QLAction handler.
+     * Constructs a new RestPromQLAction handler.
      *
      * @param clusterSettings cluster settings for accessing dynamic cluster configurations
      */
-    public RestM3QLAction(ClusterSettings clusterSettings) {
+    public RestPromQLAction(ClusterSettings clusterSettings) {
         super(clusterSettings);
     }
 
     /**
-     * Returns the metrics container initializer for M3QL REST actions.
+     * Returns the metrics container initializer for PromQL REST actions.
      *
      * @return metrics initializer
      */
@@ -142,7 +147,14 @@ public class RestM3QLAction extends BaseTSDBAction {
 
     @Override
     public List<Route> routes() {
-        return List.of(new Route(GET, BASE_M3QL_PATH), new Route(POST, BASE_M3QL_PATH));
+        return List.of(
+            // Instant query endpoints - evaluate at single point in time
+            new Route(GET, INSTANT_QUERY_PATH),
+            new Route(POST, INSTANT_QUERY_PATH),
+            // Range query endpoints - evaluate over time range
+            new Route(GET, RANGE_QUERY_PATH),
+            new Route(POST, RANGE_QUERY_PATH)
+        );
     }
 
     @Override
@@ -159,7 +171,7 @@ public class RestM3QLAction extends BaseTSDBAction {
                 tags.put("pushdown", String.valueOf(params.pushdown()));
                 if (logger.isDebugEnabled()) {
                     logger.debug(
-                        "Received M3QL request: query='{}', start={}, end={}, step={}, indices={}, explain={}, pushdown={}, profile={}, include_metadata={}, federation_metadata={}",
+                        "Received PromQL request: query='{}', start={}, end={}, step={}, indices={}, explain={}, pushdown={}, profile={}, include_metadata={}",
                         params.query,
                         params.startMs,
                         params.endMs,
@@ -168,8 +180,7 @@ public class RestM3QLAction extends BaseTSDBAction {
                         params.explain,
                         params.pushdown,
                         params.profile,
-                        params.includeMetadata,
-                        params.federationMetadata()
+                        params.includeMetadata
                     );
                 }
             } catch (IllegalArgumentException e) {
@@ -195,7 +206,7 @@ public class RestM3QLAction extends BaseTSDBAction {
                 };
             }
 
-            // Translate M3QL to OpenSearch DSL
+            // Translate PromQL to OpenSearch DSL
             try {
                 tags.put("reached_step", "translate_query");
                 final SearchSourceBuilder searchSourceBuilder = translateQuery(params);
@@ -218,7 +229,7 @@ public class RestM3QLAction extends BaseTSDBAction {
                 );
 
             } catch (UnsupportedOperationException e) {
-                // UnsupportedOperationException indicates a known M3QL function that's not yet implemented
+                // UnsupportedOperationException indicates a known PromQL function that's not yet implemented
                 String stepReached = tags.getOrDefault("reached_step", "unknown");
                 tags.put("reached_step", "error__" + stepReached);
                 tags.put("error_type", "unimplemented_function");
@@ -256,7 +267,11 @@ public class RestM3QLAction extends BaseTSDBAction {
      * @throws IOException if parsing fails
      */
     private RequestParams parseRequestParams(RestRequest request) throws IOException {
-        // Parse request body (if present) to extract query and resolved_partitions in one pass
+        // Determine query type based on endpoint path
+        String path = request.path();
+        boolean isInstantQuery = path.endsWith("/query");
+
+        // Parse request body (if present) to extract query
         RequestBody requestBody = parseRequestBody(request);
 
         // Extract query from body or fall back to URL parameter
@@ -265,22 +280,51 @@ public class RestM3QLAction extends BaseTSDBAction {
         // Capture base time once for consistent "now" across all time parameters in this request
         long nowMillis = System.currentTimeMillis();
 
-        // Parse time range (default to last 5 minutes)
-        long startMs = parseTimeParam(request, START_PARAM, DEFAULT_START_TIME, nowMillis);
-        long endMs = parseTimeParam(request, END_PARAM, DEFAULT_END_TIME, nowMillis);
+        long startMs;
+        long endMs;
+        long stepMs;
 
-        // Validate time range: start must be before end
-        if (startMs >= endMs) {
-            throw new IllegalArgumentException(
-                "Invalid time range: start time must be before end time (start=" + startMs + ", end=" + endMs + ")"
-            );
+        if (isInstantQuery) {
+            // Instant query: evaluate at single point in time
+            // Use 'time' parameter, or default to 'now'
+            String timeParam = request.param(TIME_PARAM);
+            long evalTime = timeParam != null ? parseTimeParam(request, TIME_PARAM, "now", nowMillis) : nowMillis;
+
+            // For instant queries, start == end == evaluation time, step is irrelevant
+            startMs = evalTime;
+            endMs = evalTime;
+            stepMs = 0L; // Not used for instant queries
+        } else {
+            // Range query: evaluate over time range (default for legacy endpoint)
+            startMs = parseTimeParam(request, START_PARAM, DEFAULT_START_TIME, nowMillis);
+            endMs = parseTimeParam(request, END_PARAM, DEFAULT_END_TIME, nowMillis);
+
+            // Validate time range: start must be before end
+            if (startMs >= endMs) {
+                throw new IllegalArgumentException(
+                    "Invalid time range: start time must be before end time (start=" + startMs + ", end=" + endMs + ")"
+                );
+            }
+
+            // Parse step interval
+            stepMs = request.paramAsLong(STEP_PARAM, DEFAULT_STEP_MS);
         }
-
-        // Parse step interval
-        long stepMs = request.paramAsLong(STEP_PARAM, DEFAULT_STEP_MS);
 
         // Parse indices/partitions
         String[] indices = Strings.splitStringByCommaToArray(request.param(PARTITIONS_PARAM));
+
+        // Parse lookback_delta (in seconds, convert to milliseconds)
+        // 0 means use default behavior
+        long lookbackDeltaMs = 0L;
+        String lookbackDeltaParam = request.param(LOOKBACK_DELTA_PARAM);
+        if (lookbackDeltaParam != null) {
+            try {
+                double lookbackDeltaSeconds = Double.parseDouble(lookbackDeltaParam);
+                lookbackDeltaMs = (long) (lookbackDeltaSeconds * 1000);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid lookback_delta parameter: must be a number", e);
+            }
+        }
 
         // Parse flags
         boolean explain = request.paramAsBoolean(EXPLAIN_PARAM, false);
@@ -288,14 +332,23 @@ public class RestM3QLAction extends BaseTSDBAction {
         boolean profile = request.paramAsBoolean(PROFILE_PARAM, false);
         boolean includeMetadata = request.paramAsBoolean(INCLUDE_METADATA_PARAM, false);
 
-        // Extract resolved partitions from request body (implements FederationMetadata)
-        FederationMetadata federationMetadata = (requestBody != null) ? requestBody.resolvedPartitions() : null;
-
-        return new RequestParams(query, startMs, endMs, stepMs, indices, explain, pushdown, profile, includeMetadata, federationMetadata);
+        return new RequestParams(
+            query,
+            startMs,
+            endMs,
+            stepMs,
+            indices,
+            lookbackDeltaMs,
+            explain,
+            pushdown,
+            profile,
+            includeMetadata,
+            isInstantQuery
+        );
     }
 
     /**
-     * Parses the request body (both query and resolved_partitions) in a single pass.
+     * Parses the request body to extract the query.
      *
      * @param request the REST request
      * @return parsed RequestBody, or null if no body content
@@ -318,22 +371,22 @@ public class RestM3QLAction extends BaseTSDBAction {
     }
 
     /**
-     * Translates an M3QL query to OpenSearch DSL.
+     * Translates a PromQL query to OpenSearch DSL.
      *
      * @param params request parameters containing the query and time range
      * @return the translated SearchSourceBuilder
      */
     private SearchSourceBuilder translateQuery(RequestParams params) {
-        M3OSTranslator.Params translatorParams = new M3OSTranslator.Params(
+        PromOSTranslator.Params translatorParams = new PromOSTranslator.Params(
             Constants.Time.DEFAULT_TIME_UNIT,
             params.startMs,
             params.endMs,
             params.stepMs,
+            params.lookbackDeltaMs,
             params.pushdown,
-            params.profile,
-            params.federationMetadata
+            params.profile
         );
-        return M3OSTranslator.translate(params.query, translatorParams);
+        return PromOSTranslator.translate(params.query, translatorParams);
     }
 
     /**
@@ -362,7 +415,7 @@ public class RestM3QLAction extends BaseTSDBAction {
     /**
      * Builds a response for explain mode that returns the translated DSL.
      *
-     * @param query the original M3QL query
+     * @param query the original PromQL query
      * @param searchSourceBuilder the translated DSL
      * @return a RestChannelConsumer that sends the explain response
      */
@@ -370,9 +423,9 @@ public class RestM3QLAction extends BaseTSDBAction {
         return channel -> {
             XContentBuilder response = channel.newBuilder();
             response.startObject();
-            response.field(M3QL_QUERY_FIELD, query);
+            response.field(PROMQL_QUERY_FIELD, query);
             response.field(TRANSLATED_DSL_FIELD, searchSourceBuilder.toString());
-            response.field(EXPLANATION_FIELD, "M3QL query translated to OpenSearch DSL");
+            response.field(EXPLANATION_FIELD, "PromQL query translated to OpenSearch DSL");
             response.endObject();
             channel.sendResponse(new BytesRestResponse(RestStatus.OK, response));
         };
@@ -381,22 +434,22 @@ public class RestM3QLAction extends BaseTSDBAction {
     /**
      * Internal record holding parsed request parameters.
      */
-    protected record RequestParams(String query, long startMs, long endMs, long stepMs, String[] indices, boolean explain, boolean pushdown,
-        boolean profile, boolean includeMetadata, FederationMetadata federationMetadata) {
+    protected record RequestParams(String query, long startMs, long endMs, long stepMs, String[] indices, long lookbackDeltaMs,
+        boolean explain, boolean pushdown, boolean profile, boolean includeMetadata, boolean isInstantQuery) {
     }
 
     /**
-     * Metrics container for RestM3QLAction.
+     * Metrics container for RestPromQLAction.
      */
     static class Metrics implements TSDBMetrics.MetricsInitializer {
-        static final String REQUESTS_TOTAL_METRIC_NAME = "tsdb.action.rest.m3ql.queries.total";
+        static final String REQUESTS_TOTAL_METRIC_NAME = "tsdb.action.rest.promql.queries.total";
         Counter requestsTotal;
 
         @Override
         public void register(MetricsRegistry registry) {
             requestsTotal = registry.createCounter(
                 REQUESTS_TOTAL_METRIC_NAME,
-                "total number of queries handled by the RestM3QLAction rest handler",
+                "total number of queries handled by the RestPromQLAction rest handler",
                 TSDBMetricsConstants.UNIT_COUNT
             );
         }

@@ -57,6 +57,7 @@ import org.opensearch.tsdb.query.aggregator.InternalTimeSeries;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregationBuilder;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
 import org.opensearch.tsdb.query.rest.RestM3QLAction;
+import org.opensearch.tsdb.query.rest.RestPromQLAction;
 import org.opensearch.watcher.ResourceWatcherService;
 
 import java.io.IOException;
@@ -431,6 +432,8 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
             this.metricsRegistry = Optional.of(metricsRegistry);
             List<TSDBMetrics.MetricsInitializer> metricInitializers = new ArrayList<>(M3QLMetrics.getMetricsInitializers());
 
+            // Register PromQL REST action metrics
+            metricInitializers.add(RestPromQLAction.getMetricsInitializer());
             TSDBMetrics.initialize(metricsRegistry, metricInitializers.toArray(new TSDBMetrics.MetricsInitializer[0]));
         } else {
             logger.warn("MetricsRegistry is null; TSDB metrics not initialized");
@@ -517,7 +520,7 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
         IndexNameExpressionResolver indexNameExpressionResolver,
         Supplier<DiscoveryNodes> nodesInCluster
     ) {
-        return List.of(new RestM3QLAction(clusterSettings));
+        return List.of(new RestM3QLAction(clusterSettings), new RestPromQLAction(clusterSettings));
     }
 
     @Override

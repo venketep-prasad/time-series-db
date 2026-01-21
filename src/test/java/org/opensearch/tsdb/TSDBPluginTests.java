@@ -28,6 +28,7 @@ import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregationBuilder;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
 import org.opensearch.tsdb.query.rest.RestM3QLAction;
+import org.opensearch.tsdb.query.rest.RestPromQLAction;
 
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -270,8 +271,9 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         );
 
         assertNotNull("REST handlers list should not be null", restHandlers);
-        assertThat("Should have 1 REST handler", restHandlers, hasSize(1));
+        assertThat("Should have 2 REST handler", restHandlers, hasSize(2));
         assertThat("REST handler should be RestM3QLAction", restHandlers.get(0), instanceOf(RestM3QLAction.class));
+        assertThat("REST handler should be RestM3QLAction", restHandlers.get(1), instanceOf(RestPromQLAction.class));
     }
 
     public void testRestM3QLActionRegistered() {
