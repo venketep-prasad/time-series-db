@@ -13,6 +13,8 @@ import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.opensearch.common.settings.ClusterSettings;
+import org.opensearch.common.settings.Settings;
 import org.opensearch.core.common.breaker.CircuitBreakingException;
 import org.opensearch.search.aggregations.Aggregator;
 import org.opensearch.search.aggregations.AggregatorFactories;
@@ -49,6 +51,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
+import org.opensearch.tsdb.TSDBPlugin;
 import org.opensearch.tsdb.query.utils.ProfileInfoMapper;
 import org.opensearch.tsdb.query.utils.StageProfiler;
 
@@ -113,6 +116,12 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
         .addTag(TSDBMetricsConstants.TAG_STATUS, TSDBMetricsConstants.TAG_STATUS_EMPTY);
     private static final Tags TAGS_STATUS_HITS = Tags.create()
         .addTag(TSDBMetricsConstants.TAG_STATUS, TSDBMetricsConstants.TAG_STATUS_HITS);
+    private static final Tags TAGS_COMPRESSED_TRUE = Tags.create()
+        .addTag(TSDBMetricsConstants.TAG_COMPRESSED, TSDBMetricsConstants.TAG_COMPRESSED_TRUE);
+    private static final Tags TAGS_COMPRESSED_FALSE = Tags.create()
+        .addTag(TSDBMetricsConstants.TAG_COMPRESSED, TSDBMetricsConstants.TAG_COMPRESSED_FALSE);
+
+    private static volatile boolean allowCompressedMode = false;
 
     private final List<UnaryPipelineStage> stages;
     private final Map<Long, Map<Labels, TimeSeries>> timeSeriesByBucket = new HashMap<>();
@@ -127,6 +136,14 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
     // Aggregator execution stats - single source of truth for all metrics
     private final ExecutionStats executionStats = new ExecutionStats();
 
+    // Compressed mode (when data nodes have no stages to process)
+    private final boolean useCompressedMode;
+    private final Map<Long, List<CompressedTimeSeries>> compressedTimeSeriesByBucket = new HashMap<>();
+
+    // Estimated sizes for circuit breaker accounting (compressed mode)
+    private static final long COMPRESSED_TIMESERIES_OVERHEAD = 56;
+    private static final long COMPRESSED_CHUNK_OVERHEAD = 40;
+
     /**
      * Total bytes committed to the circuit breaker by this aggregator.
      * Used for logging (doClose, commitToCircuitBreaker), error reporting on trip, and metrics (passed to ExecutionStats at report time).
@@ -135,6 +152,32 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
     /** Batches circuit breaker updates at {@link CircuitBreakerBatcher#BATCH_THRESHOLD_BYTES} (5 MB). */
     private final CircuitBreakerBatcher circuitBreakerBatcher;
+
+    /**
+     * Initializes compressed mode from cluster settings. Called from TSDBPlugin.createComponents().
+     */
+    public static void initialize(ClusterSettings clusterSettings, Settings settings) {
+        allowCompressedMode = TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION.get(settings);
+        if (clusterSettings != null) {
+            clusterSettings.addSettingsUpdateConsumer(
+                TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION,
+                newValue -> allowCompressedMode = newValue
+            );
+        }
+    }
+
+    boolean isUseCompressedMode() {
+        return useCompressedMode;
+    }
+
+    /**
+     * Test hook to inject compressed time series by bucket for testing buildAggregations in compressed mode.
+     * Avoids reflection (forbidden APIs) in tests.
+     */
+    void setCompressedTimeSeriesByBucketForTesting(Map<Long, List<CompressedTimeSeries>> bucketToSeries) {
+        compressedTimeSeriesByBucket.clear();
+        compressedTimeSeriesByBucket.putAll(bucketToSeries);
+    }
 
     /**
      * Create a time series unfold aggregator.
@@ -174,6 +217,8 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
         // Calculate theoretical maximum aligned timestamp
         // This is the largest timestamp aligned to (minTimestamp + N * step) that is < maxTimestamp
         this.theoreticalMaxTimestamp = TimeSeries.calculateAlignedMaxTimestamp(minTimestamp, maxTimestamp, step);
+
+        this.useCompressedMode = allowCompressedMode && (stages == null || stages.isEmpty());
 
         if (context.getProfilers() != null) {
             this.stageProfiler = new StageProfiler();
@@ -225,6 +270,101 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
         @Override
         public void collect(int doc, long bucket) throws IOException {
+            if (useCompressedMode) {
+                collectCompressed(doc, bucket);
+            } else {
+                collectDecompressed(doc, bucket);
+            }
+        }
+
+        private void collectCompressed(int doc, long bucket) throws IOException {
+            long bytesForThisDoc = 0;
+
+            boolean isLiveReader = tsdbLeafReader instanceof LiveSeriesIndexLeafReader;
+            executionStats.totalDocCount++;
+            if (isLiveReader) {
+                executionStats.liveDocCount++;
+            } else {
+                executionStats.closedDocCount++;
+            }
+
+            List<CompressedChunk> compressedChunks;
+            try {
+                compressedChunks = tsdbLeafReader.rawChunkDataForDoc(doc, tsdbDocValues);
+            } catch (Exception e) {
+                executionStats.chunksForDocErrors++;
+                throw e;
+            }
+            if (compressedChunks.isEmpty()) {
+                return;
+            }
+
+            for (CompressedChunk chunk : compressedChunks) {
+                executionStats.totalChunkCount++;
+                if (isLiveReader) {
+                    executionStats.liveChunkCount++;
+                } else {
+                    executionStats.closedChunkCount++;
+                }
+            }
+
+            Labels labels = tsdbLeafReader.labelsForDoc(doc, tsdbDocValues);
+            assert labels instanceof ByteLabels : "labels must support correct equals() behavior";
+
+            boolean isNewBucket = !compressedTimeSeriesByBucket.containsKey(bucket);
+            List<CompressedTimeSeries> bucketSeries = compressedTimeSeriesByBucket.computeIfAbsent(bucket, k -> new ArrayList<>());
+            if (isNewBucket) {
+                bytesForThisDoc += SampleList.ARRAYLIST_OVERHEAD + RamUsageEstimator.HASHTABLE_RAM_BYTES_PER_ENTRY;
+            }
+
+            CompressedTimeSeries existingSeries = null;
+            int existingIndex = -1;
+            for (int i = 0; i < bucketSeries.size(); i++) {
+                if (labels.equals(bucketSeries.get(i).getLabels())) {
+                    existingSeries = bucketSeries.get(i);
+                    existingIndex = i;
+                    break;
+                }
+            }
+            if (existingSeries != null) {
+                List<CompressedChunk> mergedChunks = new ArrayList<>(existingSeries.getChunks());
+                mergedChunks.addAll(compressedChunks);
+                for (CompressedChunk chunk : compressedChunks) {
+                    bytesForThisDoc += chunk.getCompressedSize() + COMPRESSED_CHUNK_OVERHEAD;
+                }
+                bucketSeries.set(
+                    existingIndex,
+                    new CompressedTimeSeries(
+                        mergedChunks,
+                        existingSeries.getLabels(),
+                        minTimestamp,
+                        theoreticalMaxTimestamp,
+                        step,
+                        existingSeries.getAlias()
+                    )
+                );
+            } else {
+                CompressedTimeSeries newSeries = new CompressedTimeSeries(
+                    compressedChunks,
+                    labels,
+                    minTimestamp,
+                    theoreticalMaxTimestamp,
+                    step,
+                    null
+                );
+                bytesForThisDoc += COMPRESSED_TIMESERIES_OVERHEAD + labels.ramBytesUsed();
+                for (CompressedChunk chunk : compressedChunks) {
+                    bytesForThisDoc += chunk.getCompressedSize() + COMPRESSED_CHUNK_OVERHEAD;
+                }
+                bucketSeries.add(newSeries);
+            }
+            if (bytesForThisDoc > 0) {
+                trackCircuitBreakerBytes(bytesForThisDoc);
+            }
+            collectBucket(subCollector, doc, bucket);
+        }
+
+        private void collectDecompressed(int doc, long bucket) throws IOException {
             // Accumulate circuit breaker bytes for this document, then add to pending batch
             long bytesForThisDoc = 0;
 
@@ -465,6 +605,9 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
     @Override
     public InternalAggregation buildEmptyAggregation() {
         Map<String, Object> emptyMetadata = metadata();
+        if (useCompressedMode) {
+            return InternalTimeSeries.compressed(name, List.of(), emptyMetadata != null ? emptyMetadata : Map.of());
+        }
         return new InternalTimeSeries(name, List.of(), emptyMetadata != null ? emptyMetadata : Map.of());
     }
 
@@ -472,45 +615,48 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
     public InternalAggregation[] buildAggregations(long[] bucketOrds) throws IOException {
         try {
             InternalAggregation[] results = new InternalAggregation[bucketOrds.length];
+            Map<String, Object> baseMetadata = metadata() != null ? metadata() : Map.of();
 
-            for (int i = 0; i < bucketOrds.length; i++) {
-                long bucketOrd = bucketOrds[i];
-
-                // Check if this bucket was already processed in postCollection()
-                // If not, it means no documents were collected for this bucket, but we still need to execute stages
-                // This is important for stages like FallbackSeriesUnaryStage that should generate results on empty input
-                List<TimeSeries> timeSeriesList;
-                if (processedTimeSeriesByBucket.containsKey(bucketOrd)) {
-                    // Bucket was already processed in postCollection
-                    timeSeriesList = processedTimeSeriesByBucket.get(bucketOrd);
-                } else {
-                    // Bucket was not processed (no data collected), execute stages on empty list
-                    timeSeriesList = executeStages(List.of());
+            if (useCompressedMode) {
+                for (int i = 0; i < bucketOrds.length; i++) {
+                    List<CompressedTimeSeries> compressedTimeSeriesList = compressedTimeSeriesByBucket.getOrDefault(
+                        bucketOrds[i],
+                        List.of()
+                    );
+                    int seriesCount = compressedTimeSeriesList.size();
+                    executionStats.outputSeriesCount += seriesCount;
+                    if (seriesCount > 0) {
+                        TSDBMetrics.incrementCounter(TSDBMetrics.AGGREGATION.seriesSentTotal, seriesCount, TAGS_COMPRESSED_TRUE);
+                    }
+                    results[i] = InternalTimeSeries.compressed(name, compressedTimeSeriesList, baseMetadata);
                 }
+            } else {
+                for (int i = 0; i < bucketOrds.length; i++) {
+                    long bucketOrd = bucketOrds[i];
 
-                executionStats.outputSeriesCount += timeSeriesList.size();
+                    // Check if this bucket was already processed in postCollection()
+                    // If not, it means no documents were collected for this bucket, but we still need to execute stages
+                    List<TimeSeries> timeSeriesList;
+                    if (processedTimeSeriesByBucket.containsKey(bucketOrd)) {
+                        timeSeriesList = processedTimeSeriesByBucket.get(bucketOrd);
+                    } else {
+                        timeSeriesList = executeStages(List.of());
+                    }
 
-                // Get the last stage to determine the reduce behavior
-                UnaryPipelineStage lastStage = (stages == null || stages.isEmpty()) ? null : stages.getLast();
+                    executionStats.outputSeriesCount += timeSeriesList.size();
 
-                // Only set global aggregation stages as the reduceStage
-                UnaryPipelineStage reduceStage = null;
-                if (lastStage != null && lastStage.isGlobalAggregation()) {
-                    reduceStage = lastStage;
+                    if (timeSeriesList.size() > 0) {
+                        TSDBMetrics.incrementCounter(TSDBMetrics.AGGREGATION.seriesSentTotal, timeSeriesList.size(), TAGS_COMPRESSED_FALSE);
+                    }
+
+                    UnaryPipelineStage lastStage = (stages == null || stages.isEmpty()) ? null : stages.getLast();
+                    UnaryPipelineStage reduceStage = (lastStage != null && lastStage.isGlobalAggregation()) ? lastStage : null;
+
+                    results[i] = new InternalTimeSeries(name, timeSeriesList, baseMetadata, reduceStage);
                 }
-
-                // Use the generic InternalPipeline with the reduce stage
-                Map<String, Object> baseMetadata = metadata();
-                results[i] = new InternalTimeSeries(
-                    name,
-                    timeSeriesList,
-                    baseMetadata != null ? baseMetadata : Map.of(),
-                    reduceStage  // Pass the reduce stage (null for transformation stages)
-                );
             }
             return results;
         } finally {
-            // Emit all metrics in one batch - minimal overhead
             executionStats.recordMetrics();
         }
     }
@@ -533,6 +679,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
         // by the parent AggregatorBase class when close() is called
         processedTimeSeriesByBucket.clear();
         timeSeriesByBucket.clear();
+        compressedTimeSeriesByBucket.clear();
     }
 
     // ==================== Circuit Breaker Tracking ====================

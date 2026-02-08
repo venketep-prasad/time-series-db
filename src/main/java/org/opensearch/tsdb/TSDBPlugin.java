@@ -69,6 +69,7 @@ import org.opensearch.tsdb.query.aggregator.InternalTSDBStats;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesCoordinatorAggregationBuilder;
 import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregationBuilder;
 import org.opensearch.tsdb.query.aggregator.TSDBStatsAggregationBuilder;
+import org.opensearch.tsdb.query.aggregator.TimeSeriesUnfoldAggregator;
 import org.opensearch.tsdb.query.rest.RemoteIndexSettingsCache;
 import org.opensearch.tsdb.query.rest.RestM3QLAction;
 import org.opensearch.tsdb.query.rest.RestPromQLAction;
@@ -722,6 +723,9 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
 
         // Initialize wildcard query cache with cluster-level settings
         CachedWildcardQueryBuilder.initializeCache(clusterService.getClusterSettings(), clusterService.getSettings());
+
+        // Initialize compressed mode flag for time series aggregation
+        TimeSeriesUnfoldAggregator.initialize(clusterService.getClusterSettings(), clusterService.getSettings());
 
         return Collections.emptyList();
     }
