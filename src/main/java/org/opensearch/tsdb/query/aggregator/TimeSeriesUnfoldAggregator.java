@@ -394,31 +394,17 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             if (isNewBucket) bytesForThisDoc += ARRAYLIST_OVERHEAD + HASHMAP_ENTRY_OVERHEAD;
 
             CompressedTimeSeries existingSeries = null;
-            int existingIndex = -1;
             for (int i = 0; i < bucketSeries.size(); i++) {
                 if (labels.equals(bucketSeries.get(i).getLabels())) {
                     existingSeries = bucketSeries.get(i);
-                    existingIndex = i;
                     break;
                 }
             }
             if (existingSeries != null) {
-                List<CompressedChunk> mergedChunks = new ArrayList<>(existingSeries.getChunks());
-                mergedChunks.addAll(compressedChunks);
+                existingSeries.getChunks().addAll(compressedChunks);
                 for (CompressedChunk chunk : compressedChunks) {
                     bytesForThisDoc += chunk.getCompressedSize() + COMPRESSED_CHUNK_OVERHEAD;
                 }
-                bucketSeries.set(
-                    existingIndex,
-                    new CompressedTimeSeries(
-                        mergedChunks,
-                        existingSeries.getLabels(),
-                        minTimestamp,
-                        theoreticalMaxTimestamp,
-                        step,
-                        existingSeries.getAlias()
-                    )
-                );
             } else {
                 CompressedTimeSeries newSeries = new CompressedTimeSeries(
                     compressedChunks,
