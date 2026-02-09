@@ -439,13 +439,14 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 chunksForDocErrors++;
                 throw e;
             }
-            for (ChunkIterator chunkIterator : chunkIterators) {
-                totalChunksProcessed++;
-                if (isLiveReader) liveChunksProcessed++;
-                else closedChunksProcessed++;
-            }
+            int chunkCount = chunkIterators.size();
+            totalChunksProcessed += chunkCount;
+            if (isLiveReader) liveChunksProcessed += chunkCount;
+            else closedChunksProcessed += chunkCount;
             if (chunkIterators.isEmpty()) return;
 
+            // TODO: make dedup policy configurable
+            // dedup is only expected to be used against live series' MemChunks, which may contain chunks with overlapping timestamps
             ChunkIterator it = chunkIterators.size() == 1
                 ? chunkIterators.getFirst()
                 : new DedupIterator(new MergeIterator(chunkIterators), DedupIterator.DuplicatePolicy.FIRST);
