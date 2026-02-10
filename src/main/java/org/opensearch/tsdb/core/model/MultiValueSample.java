@@ -22,10 +22,7 @@ import java.util.Objects;
  * Sample implementation that stores a list of values per timestamp for percentile calculation.
  *
  * <p>This sample type is used during distributed aggregation of percentile calculations.
- * It maintains an unsorted list of values which provides O(1) insertion performance.
- * The list is only sorted once at the coordinator when calculating the final percentile
- * values, providing much better performance: O(M) inserts + O(M log M) final sort = O(M log M)
- * instead of O(M²) for a sorted-list approach.</p>
+ * It stores a list of values per timestamp. Values are kept unsorted for O(1) insertion.</p>
  *
  * <p>Note: This is primarily an internal sample type used during aggregation. The final
  * results are typically materialized to {@link FloatSample} instances.</p>

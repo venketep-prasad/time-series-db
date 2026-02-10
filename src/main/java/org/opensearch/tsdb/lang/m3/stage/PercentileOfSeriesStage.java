@@ -354,7 +354,6 @@ public class PercentileOfSeriesStage extends AbstractGroupingSampleStage<MultiVa
                     );
                 }
                 // Sort values once and calculate percentile - O(N log N) per timestamp
-                // This is much more efficient than maintaining sorted order during aggregation (O(N²))
                 double percentileValue = PercentileUtils.calculatePercentile(
                     multiValueSample.getSortedValueList(),
                     percentile,
