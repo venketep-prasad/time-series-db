@@ -90,16 +90,10 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         assertEquals(unsortedValues, sample.getValueList());
     }
 
-    public void testInsertPerformance() {
-        // Test that insert is O(1) by just appending
+    public void testInsert() {
         MultiValueSample sample = new MultiValueSample(1000L, 10.0);
-
         sample.insert(20.0);
-        assertEquals(2, sample.getValueList().size());
-
         sample.insert(15.0);
-        assertEquals(3, sample.getValueList().size());
-
         // Values should be in insertion order (unsorted)
         assertEquals(List.of(10.0, 20.0, 15.0), sample.getValueList());
     }
