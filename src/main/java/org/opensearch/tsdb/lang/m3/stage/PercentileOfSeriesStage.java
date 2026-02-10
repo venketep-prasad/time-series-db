@@ -241,17 +241,25 @@ public class PercentileOfSeriesStage extends AbstractGroupingSampleStage<MultiVa
         if (bucket == null) {
             // First sample for this timestamp
             if (newSample instanceof MultiValueSample multiValueSample) {
-                return new MultiValueSample(newSample.getTimestamp(), multiValueSample.getValueList());
+                List<Double> values = new ArrayList<>();
+                for (Double value : multiValueSample.getValueList()) {
+                    if (!Double.isNaN(value)) {
+                        values.add(value);
+                    }
+                }
+                return new MultiValueSample(newSample.getTimestamp(), values);
             }
             // During initial collection from FloatSamples, start with single value
             return new MultiValueSample(newSample.getTimestamp(), newSample.getValue());
         }
 
         // If newSample is already MultiValueSample (from another shard during reduce),
-        // append all its values to the bucket (in-place mutation)
+        // append all its values to the bucket (in-place mutation), skipping NaN
         if (newSample instanceof MultiValueSample multiValueSample) {
             for (Double value : multiValueSample.getValueList()) {
-                bucket.insert(value);
+                if (!Double.isNaN(value)) {
+                    bucket.insert(value);
+                }
             }
             return bucket;
         }

@@ -12,6 +12,7 @@ import org.opensearch.tsdb.core.model.FloatSample;
 import org.opensearch.tsdb.core.model.Sample;
 import org.opensearch.tsdb.core.model.SampleType;
 import org.opensearch.tsdb.core.model.MultiValueSample;
+import org.opensearch.tsdb.core.model.MinMaxSample;
 import org.opensearch.tsdb.core.model.SumCountSample;
 
 import java.util.ArrayList;
@@ -81,6 +82,14 @@ public class DenseSampleContainerTests extends OpenSearchTestCase {
         expected.forEach(sample -> container.append(sample.getTimestamp(), sample));
 
         expectThrows(IllegalArgumentException.class, () -> container.getSampleFor(0L));
+    }
+
+    public void testFloatSample_GetSampleForReturnsNullForGap() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.FLOAT_SAMPLE, 1000L);
+        container.append(1000L, new FloatSample(1000L, 10.0));
+        container.append(3000L, new FloatSample(3000L, 30.0)); // gap at 2000L
+
+        assertNull(container.getSampleFor(2000L));
     }
 
     public void testFloatSample_UpdateSampleFor() {
@@ -239,7 +248,7 @@ public class DenseSampleContainerTests extends OpenSearchTestCase {
         container.updateSampleFor(3000L, new MultiValueSample(2000L, List.of(1.0, 2.0, 3.0, 4.0, 5.0)));
 
         sample = container.getSampleFor(3000L);
-        assertEquals(3.0, sample.getValue(), 0.001);
+        assertEquals(List.of(1.0, 2.0, 3.0, 4.0, 5.0), ((MultiValueSample) sample).getSortedValueList());
         assertEquals(1000, container.getMinTimestamp());
         assertEquals(1000000, container.getMaxTimestamp());
 
@@ -258,6 +267,65 @@ public class DenseSampleContainerTests extends OpenSearchTestCase {
             IllegalArgumentException.class,
             () -> container.updateSampleFor(2500L, new MultiValueSample(2500L, Arrays.asList(10.0, 11.0, 12.0)))
         );
+    }
+
+    // ========== MIN_MAX_SAMPLE ==========
+
+    public void testMinMaxSample_Append() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.MIN_MAX_SAMPLE, 1000L);
+        container.append(1000L, new MinMaxSample(1000L, 1.0, 10.0));
+        container.append(2000L, new MinMaxSample(2000L, 2.0, 20.0));
+        container.append(3000L, new MinMaxSample(3000L, 3.0, 30.0));
+
+        assertEquals(3L, container.size());
+        assertEquals(1000L, container.getMinTimestamp());
+        assertEquals(3000L, container.getMaxTimestamp());
+    }
+
+    public void testMinMaxSample_GetSampleFor() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.MIN_MAX_SAMPLE, 1000L);
+        container.append(1000L, new MinMaxSample(1000L, 1.0, 10.0));
+        container.append(2000L, new MinMaxSample(2000L, 2.0, 20.0));
+
+        Sample sample = container.getSampleFor(2000L);
+        assertTrue(sample instanceof MinMaxSample);
+        MinMaxSample minMax = (MinMaxSample) sample;
+        assertEquals(2000L, minMax.getTimestamp());
+        assertEquals(2.0, minMax.min(), 0.001);
+        assertEquals(20.0, minMax.max(), 0.001);
+    }
+
+    public void testMinMaxSample_UpdateSampleFor() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.MIN_MAX_SAMPLE, 1000L);
+        container.append(1000L, new MinMaxSample(1000L, 1.0, 10.0));
+        container.append(2000L, new MinMaxSample(2000L, 2.0, 20.0));
+        container.append(4000L, new MinMaxSample(4000L, 4.0, 40.0)); // gap at 3000
+
+        assertNull(container.getSampleFor(3000L));
+        container.updateSampleFor(3000L, new MinMaxSample(3000L, 3.0, 30.0));
+
+        Sample sample = container.getSampleFor(3000L);
+        assertTrue(sample instanceof MinMaxSample);
+        MinMaxSample minMax = (MinMaxSample) sample;
+        assertEquals(3.0, minMax.min(), 0.001);
+        assertEquals(30.0, minMax.max(), 0.001);
+
+        container.updateSampleFor(3000L, null);
+        assertNull(container.getSampleFor(3000L));
+    }
+
+    public void testMinMaxSample_UpdateSampleForThrowsExceptionOnInvalidTimestamp() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.MIN_MAX_SAMPLE, 1000L);
+        container.append(1000L, new MinMaxSample(1000L, 1.0, 10.0));
+
+        expectThrows(IllegalArgumentException.class, () -> container.updateSampleFor(2500L, new MinMaxSample(2500L, 2.5, 25.0)));
+    }
+
+    public void testMinMaxSample_GetSampleForThrowsExceptionOnInvalidTimestamp() {
+        DenseSampleContainer container = new DenseSampleContainer(SampleType.MIN_MAX_SAMPLE, 1000L);
+        container.append(1000L, new MinMaxSample(1000L, 1.0, 10.0));
+
+        expectThrows(IllegalArgumentException.class, () -> container.getSampleFor(0L));
     }
 
     // ========== Edge Cases and Error Handling ==========
@@ -400,7 +468,10 @@ public class DenseSampleContainerTests extends OpenSearchTestCase {
                     assertEquals(((SumCountSample) expectedSample).sum(), ((SumCountSample) actuaSample).sum(), 0.001);
                     assertEquals(((SumCountSample) expectedSample).count(), ((SumCountSample) actuaSample).count());
                 } else if (expectedSample.getSampleType() == SampleType.MULTI_VALUE_SAMPLE) {
-                    assertEquals(expectedSample.getValue(), actuaSample.getValue(), 0.001);
+                    assertEquals(
+                        ((MultiValueSample) expectedSample).getSortedValueList(),
+                        ((MultiValueSample) actuaSample).getSortedValueList()
+                    );
                 }
                 actualSize++;
             }

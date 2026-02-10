@@ -10,8 +10,6 @@ package org.opensearch.tsdb.core.model;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.tsdb.query.utils.PercentileUtils;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -94,10 +92,9 @@ public class MultiValueSample implements Sample, Writeable {
 
     @Override
     public double getValue() {
-        // Return the 50th percentile (median) as a representative value
-        // This requires sorting, but getValue() is typically not called during aggregation
-        List<Double> sortedValues = getSortedValueList();
-        return PercentileUtils.calculateMedian(sortedValues);
+        throw new UnsupportedOperationException(
+            "MultiValueSample does not support getValue(); use getValueList() or getSortedValueList() for percentile calculation"
+        );
     }
 
     @Override
@@ -127,10 +124,7 @@ public class MultiValueSample implements Sample, Writeable {
 
     @Override
     public Sample merge(Sample other) {
-        if (!(other instanceof MultiValueSample)) {
-            throw new IllegalArgumentException("Cannot merge MultiValueSample with " + other.getClass().getSimpleName());
-        }
-        return merge((MultiValueSample) other);
+        throw new UnsupportedOperationException("MultiValueSample does not support merge; use insert() for aggregation");
     }
 
     /**
@@ -153,20 +147,6 @@ public class MultiValueSample implements Sample, Writeable {
         List<Double> sortedValues = new ArrayList<>(values);
         Collections.sort(sortedValues);
         return sortedValues;
-    }
-
-    /**
-     * Merge this sample with another by concatenating their value lists.
-     * Builds the result by appending into a single pre-allocated list (no extra temporary list).
-     *
-     * @param other the other MultiValueSample to merge with
-     * @return a new MultiValueSample with concatenated values
-     */
-    public MultiValueSample merge(MultiValueSample other) {
-        MultiValueSample result = withCapacity(this.timestamp, this.values.size() + other.values.size());
-        result.getValueList().addAll(this.values);
-        result.getValueList().addAll(other.values);
-        return result;
     }
 
     /**

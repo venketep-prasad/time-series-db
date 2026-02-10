@@ -52,11 +52,17 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         MultiValueSample sample = new MultiValueSample(1000L, 42.0);
 
         assertEquals(1000L, sample.getTimestamp());
-        assertEquals(42.0, sample.getValue(), 0.0001);
         assertEquals(ValueType.FLOAT64, sample.valueType());
         assertEquals(SampleType.MULTI_VALUE_SAMPLE, sample.getSampleType());
         assertEquals(1, sample.getValueList().size());
         assertEquals(42.0, sample.getValueList().get(0), 0.0001);
+    }
+
+    public void testGetValueThrowsUnsupportedOperationException() {
+        MultiValueSample sample = new MultiValueSample(1000L, List.of(10.0, 20.0, 30.0));
+        UnsupportedOperationException e = expectThrows(UnsupportedOperationException.class, sample::getValue);
+        assertTrue(e.getMessage().contains("does not support getValue()"));
+        assertTrue(e.getMessage().contains("getValueList()"));
     }
 
     public void testMultipleValues() {
@@ -64,8 +70,6 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         MultiValueSample sample = new MultiValueSample(2000L, values);
 
         assertEquals(2000L, sample.getTimestamp());
-        // getValue() should return 50th percentile (median) = 20.0
-        assertEquals(20.0, sample.getValue(), 0.0001);
         assertEquals(3, sample.getValueList().size());
         // getValueList() should return unsorted values as-is
         assertEquals(values, sample.getValueList());
@@ -86,24 +90,6 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         assertEquals(unsortedValues, sample.getValueList());
     }
 
-    public void testGetValueMedianOddCount() {
-        // Unsorted: [50, 10, 30, 20, 40]
-        // Sorted: [10, 20, 30, 40, 50]
-        // 50th percentile: median = 30
-        List<Double> values = List.of(50.0, 10.0, 30.0, 20.0, 40.0);
-        MultiValueSample sample = new MultiValueSample(1000L, values);
-        assertEquals(30.0, sample.getValue(), 0.0001);
-    }
-
-    public void testGetValueMedianEvenCount() {
-        // Unsorted: [40, 10, 30, 20]
-        // Sorted: [10, 20, 30, 40]
-        // 50th percentile: fractionalRank=0.5*4=2.0, ceil=2, index=1 -> 20
-        List<Double> values = List.of(40.0, 10.0, 30.0, 20.0);
-        MultiValueSample sample = new MultiValueSample(1000L, values);
-        assertEquals(20.0, sample.getValue(), 0.0001);
-    }
-
     public void testInsertPerformance() {
         // Test that insert is O(1) by just appending
         MultiValueSample sample = new MultiValueSample(1000L, 10.0);
@@ -118,56 +104,20 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         assertEquals(List.of(10.0, 20.0, 15.0), sample.getValueList());
     }
 
-    public void testMergeSamples() {
-        MultiValueSample sample1 = new MultiValueSample(1000L, List.of(50.0, 10.0, 30.0));
-        MultiValueSample sample2 = new MultiValueSample(1000L, List.of(40.0, 20.0));
-
-        MultiValueSample merged = sample1.merge(sample2);
-
-        assertEquals(1000L, merged.getTimestamp());
-        // Merge should concatenate unsorted lists
-        assertEquals(List.of(50.0, 10.0, 30.0, 40.0, 20.0), merged.getValueList());
-
-        // getSortedValueList() should still return sorted values
-        assertEquals(List.of(10.0, 20.0, 30.0, 40.0, 50.0), merged.getSortedValueList());
-    }
-
-    public void testMergeSamplesDisjoint() {
+    public void testMergeThrowsUnsupportedOperationException() {
         MultiValueSample sample1 = new MultiValueSample(1000L, List.of(10.0, 20.0));
         MultiValueSample sample2 = new MultiValueSample(1000L, List.of(30.0, 40.0));
 
-        MultiValueSample merged = sample1.merge(sample2);
+        UnsupportedOperationException e = expectThrows(UnsupportedOperationException.class, () -> sample1.merge(sample2));
+        assertTrue(e.getMessage().contains("does not support merge"));
+        assertTrue(e.getMessage().contains("insert()"));
 
-        // Concatenates in order
-        assertEquals(List.of(10.0, 20.0, 30.0, 40.0), merged.getValueList());
-    }
+        // merge(Sample) also throws
+        Sample other = new MultiValueSample(1000L, 50.0);
+        expectThrows(UnsupportedOperationException.class, () -> sample1.merge(other));
 
-    public void testMergeSamplesWithDuplicates() {
-        MultiValueSample sample1 = new MultiValueSample(1000L, List.of(10.0, 30.0));
-        MultiValueSample sample2 = new MultiValueSample(1000L, List.of(10.0, 20.0, 30.0));
-
-        MultiValueSample merged = sample1.merge(sample2);
-
-        // Should include duplicates from both lists
-        assertEquals(List.of(10.0, 30.0, 10.0, 20.0, 30.0), merged.getValueList());
-    }
-
-    public void testMergeWithInterfaceMethod() {
-        MultiValueSample sample1 = new MultiValueSample(1000L, List.of(30.0, 10.0));
-        Sample sample2 = new MultiValueSample(1000L, List.of(40.0, 20.0));
-
-        Sample merged = sample1.merge(sample2);
-
-        assertTrue(merged instanceof MultiValueSample);
-        assertEquals(List.of(30.0, 10.0, 40.0, 20.0), ((MultiValueSample) merged).getValueList());
-    }
-
-    public void testMergeWithWrongType() {
-        MultiValueSample sample1 = new MultiValueSample(1000L, 10.0);
-        FloatSample sample2 = new FloatSample(1000L, 20.0);
-
-        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> sample1.merge(sample2));
-        assertTrue(e.getMessage().contains("Cannot merge MultiValueSample with FloatSample"));
+        // merge with wrong type also throws UnsupportedOperationException (not IllegalArgumentException)
+        expectThrows(UnsupportedOperationException.class, () -> sample1.merge(new FloatSample(1000L, 20.0)));
     }
 
     public void testEquals() {
@@ -202,5 +152,16 @@ public class MultiValueSampleTests extends AbstractWireSerializingTestCase<Multi
         copy.insert(40.0);
         assertEquals(3, original.getValueList().size());
         assertEquals(4, copy.getValueList().size());
+    }
+
+    public void testWithCapacity() {
+        MultiValueSample sample = MultiValueSample.withCapacity(1000L, 5);
+        assertEquals(1000L, sample.getTimestamp());
+        assertTrue(sample.getValueList().isEmpty());
+
+        sample.insert(10.0);
+        sample.insert(20.0);
+        sample.insert(30.0);
+        assertEquals(List.of(10.0, 20.0, 30.0), sample.getValueList());
     }
 }

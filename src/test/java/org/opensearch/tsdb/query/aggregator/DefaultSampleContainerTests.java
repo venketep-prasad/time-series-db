@@ -332,7 +332,10 @@ public class DefaultSampleContainerTests extends OpenSearchTestCase {
                     assertEquals(((SumCountSample) expectedSample).sum(), ((SumCountSample) actuaSample).sum(), 0.001);
                     assertEquals(((SumCountSample) expectedSample).count(), ((SumCountSample) actuaSample).count());
                 } else if (expectedSample.getSampleType() == SampleType.MULTI_VALUE_SAMPLE) {
-                    assertEquals(expectedSample.getValue(), actuaSample.getValue(), 0.001);
+                    assertEquals(
+                        ((MultiValueSample) expectedSample).getSortedValueList(),
+                        ((MultiValueSample) actuaSample).getSortedValueList()
+                    );
                 }
                 actualSize++;
             }
