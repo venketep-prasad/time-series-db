@@ -190,14 +190,7 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         Map<Long, A> timestampToAggregated = HashMap.newHashMap(expectedTimestamps);
 
         for (TimeSeries series : groupSeries) {
-            for (Sample sample : series.getSamples()) {
-                // Skip NaN values - treat them as null/missing (MultiValueSample does not support getValue())
-                if (!(sample instanceof MultiValueSample) && Double.isNaN(sample.getValue())) {
-                    continue;
-                }
-                long timestamp = sample.getTimestamp();
-                timestampToAggregated.compute(timestamp, (ts, a) -> aggregateSingleSample(a, sample));
-            }
+            aggregateSamplesIntoMap(series.getSamples(), timestampToAggregated);
         }
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
@@ -250,18 +243,7 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         ConcurrentHashMap<Long, A> timestampToAggregated = new ConcurrentHashMap<>(expectedTimestamps, 0.9f);
 
         // Process all time series in parallel
-        groupSeries.parallelStream().forEach(series -> {
-            for (Sample sample : series.getSamples()) {
-                // Skip NaN values - treat them as null/missing
-                if (Double.isNaN(sample.getValue())) {
-                    continue;
-                }
-                long timestamp = sample.getTimestamp();
-
-                // ConcurrentHashMap.compute is thread-safe and atomic per key
-                timestampToAggregated.compute(timestamp, (ts, bucket) -> aggregateSingleSample(bucket, sample));
-            }
-        });
+        groupSeries.parallelStream().forEach(series -> aggregateSamplesIntoMap(series.getSamples(), timestampToAggregated));
 
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
