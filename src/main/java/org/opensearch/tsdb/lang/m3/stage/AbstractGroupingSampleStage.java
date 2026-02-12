@@ -41,7 +41,7 @@ import java.util.Map.Entry;
  *   <li><strong>Parallel:</strong> Used for large datasets to leverage multi-core CPUs at coordinator level</li>
  * </ul>
  *
- * <p>Parallel processing uses thread-local aggregation (no shared map contention) then merges
+ * <p>Parallel processing uses thread-local aggregation then merges
  * results, with work executed via {@link java.util.concurrent.ForkJoinPool} common pool.</p>
  */
 public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingStage {
