@@ -564,14 +564,14 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
 
     /**
      * Enable or disable parallel processing for grouping stages (sum, avg, min, max, count, etc.).
-     * When disabled, grouping stages always use sequential processing.
+     * When enabled, grouping stages use parallel processing.
      * Useful for debugging or when predictable single-threaded behavior is desired.
      *
-     * <p>Default: true (enabled)</p>
+     * <p>Default: false (disabled)</p>
      */
     public static final Setting<Boolean> GROUPING_STAGE_PARALLEL_ENABLED = Setting.boolSetting(
         "tsdb_engine.query.grouping_stage.parallel_processing.enabled",
-        true, // default
+        false, // default
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );

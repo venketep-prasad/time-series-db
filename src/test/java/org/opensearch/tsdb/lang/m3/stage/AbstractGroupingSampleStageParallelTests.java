@@ -20,8 +20,10 @@ import org.opensearch.tsdb.query.stage.ParallelProcessingConfig;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 import static org.opensearch.tsdb.lang.m3.stage.StageTestUtils.createTimeSeries;
 
@@ -49,76 +51,92 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
         super.tearDown();
     }
 
+    /** Default large dataset size used for sequential vs parallel comparison tests. */
+    private static final int DEFAULT_NUM_SERIES = 100;
+    private static final int DEFAULT_SAMPLES_PER_SERIES = 200;
+
     /**
-     * Test that sequential and parallel processing produce identical results for sum.
+     * Runs the given stage with sequential then parallel config on a shared large dataset,
+     * and asserts both produce identical results. Optionally applies a normalizer to both
+     * result lists before comparison (e.g. sort by label for stable ordering).
+     *
+     * @param stage the stage to test
+     * @param resultNormalizer optional; if non-null, applied to both result lists before comparison
      */
-    public void testSequentialAndParallelProduceSameResultsForSum() {
-        // Create a large dataset that would trigger parallel processing
-        List<TimeSeries> largeInput = createLargeDataset(100, 200); // 100 series, 200 samples each
+    private void assertSequentialAndParallelProduceSameResults(
+        AbstractGroupingSampleStage<?> stage,
+        UnaryOperator<List<TimeSeries>> resultNormalizer
+    ) {
+        List<TimeSeries> largeInput = createLargeDataset(DEFAULT_NUM_SERIES, DEFAULT_SAMPLES_PER_SERIES);
 
-        SumStage sumStage = new SumStage();
-
-        // Test with sequential processing
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.sequentialOnly());
-        List<TimeSeries> sequentialResult = sumStage.process(largeInput);
+        List<TimeSeries> sequentialResult = stage.process(largeInput);
 
-        // Test with parallel processing
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.alwaysParallel());
-        List<TimeSeries> parallelResult = sumStage.process(largeInput);
+        List<TimeSeries> parallelResult = stage.process(largeInput);
 
-        // Results should be identical
         assertEquals(sequentialResult.size(), parallelResult.size());
-        assertEquals(1, sequentialResult.size());
-
-        TimeSeries seqTs = sequentialResult.get(0);
-        TimeSeries parTs = parallelResult.get(0);
-
-        assertEquals(seqTs.getSamples().size(), parTs.getSamples().size());
-
-        // Compare each sample
-        List<Sample> seqSamples = seqTs.getSamples().toList();
-        List<Sample> parSamples = parTs.getSamples().toList();
-        for (int i = 0; i < seqSamples.size(); i++) {
-            Sample seqSample = seqSamples.get(i);
-            Sample parSample = parSamples.get(i);
-            assertEquals(seqSample.getTimestamp(), parSample.getTimestamp());
-            assertEquals(seqSample.getValue(), parSample.getValue(), 0.0001);
+        if (resultNormalizer != null) {
+            sequentialResult = resultNormalizer.apply(new ArrayList<>(sequentialResult));
+            parallelResult = resultNormalizer.apply(new ArrayList<>(parallelResult));
         }
+        assertTimeSeriesListsEqual(sequentialResult, parallelResult);
+    }
+
+    /** Sort time series by __percentile label for stable comparison (e.g. PercentileOfSeriesStage output). */
+    private static final UnaryOperator<List<TimeSeries>> SORT_BY_PERCENTILE_LABEL = list -> {
+        list.sort(Comparator.comparing(ts -> ts.getLabels().get("__percentile"), Comparator.nullsFirst(Comparator.naturalOrder())));
+        return list;
+    };
+
+    public void testSequentialAndParallelProduceSameResultsForSum() {
+        assertSequentialAndParallelProduceSameResults(new SumStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForAvg() {
+        assertSequentialAndParallelProduceSameResults(new AvgStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForMin() {
+        assertSequentialAndParallelProduceSameResults(new MinStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForMax() {
+        assertSequentialAndParallelProduceSameResults(new MaxStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForMultiply() {
+        assertSequentialAndParallelProduceSameResults(new MultiplyStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForRange() {
+        assertSequentialAndParallelProduceSameResults(new RangeStage(), null);
+    }
+
+    public void testSequentialAndParallelProduceSameResultsForPercentileOfSeries() {
+        assertSequentialAndParallelProduceSameResults(
+            new PercentileOfSeriesStage(List.of(0.0f, 50.0f, 95.0f, 100.0f), false),
+            SORT_BY_PERCENTILE_LABEL
+        );
     }
 
     /**
-     * Test that sequential and parallel processing produce identical results for avg.
+     * Assert that two lists of time series are equal (same size, and each pair has same samples).
      */
-    public void testSequentialAndParallelProduceSameResultsForAvg() {
-        List<TimeSeries> largeInput = createLargeDataset(100, 200);
-
-        AvgStage avgStage = new AvgStage();
-
-        // Test with sequential processing
-        AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.sequentialOnly());
-        List<TimeSeries> sequentialResult = avgStage.process(largeInput);
-
-        // Test with parallel processing
-        AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.alwaysParallel());
-        List<TimeSeries> parallelResult = avgStage.process(largeInput);
-
-        // Results should be identical
-        assertEquals(sequentialResult.size(), parallelResult.size());
-        assertEquals(1, sequentialResult.size());
-
-        TimeSeries seqTs = sequentialResult.get(0);
-        TimeSeries parTs = parallelResult.get(0);
-
-        assertEquals(seqTs.getSamples().size(), parTs.getSamples().size());
-
-        // Compare each sample
-        List<Sample> seqSamples = seqTs.getSamples().toList();
-        List<Sample> parSamples = parTs.getSamples().toList();
-        for (int i = 0; i < seqSamples.size(); i++) {
-            Sample seqSample = seqSamples.get(i);
-            Sample parSample = parSamples.get(i);
-            assertEquals(seqSample.getTimestamp(), parSample.getTimestamp());
-            assertEquals(seqSample.getValue(), parSample.getValue(), 0.0001);
+    private void assertTimeSeriesListsEqual(List<TimeSeries> expected, List<TimeSeries> actual) {
+        assertEquals(expected.size(), actual.size());
+        for (int i = 0; i < expected.size(); i++) {
+            TimeSeries seqTs = expected.get(i);
+            TimeSeries parTs = actual.get(i);
+            assertEquals(seqTs.getSamples().size(), parTs.getSamples().size());
+            List<Sample> seqSamples = seqTs.getSamples().toList();
+            List<Sample> parSamples = parTs.getSamples().toList();
+            for (int j = 0; j < seqSamples.size(); j++) {
+                Sample seqSample = seqSamples.get(j);
+                Sample parSample = parSamples.get(j);
+                assertEquals(seqSample.getTimestamp(), parSample.getTimestamp());
+                assertEquals(seqSample.getValue(), parSample.getValue(), 0.0001);
+            }
         }
     }
 

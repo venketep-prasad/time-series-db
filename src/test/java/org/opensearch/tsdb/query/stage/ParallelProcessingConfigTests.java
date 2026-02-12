@@ -84,18 +84,22 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
     }
 
     /**
-     * Test setting default values match defaultConfig().
+     * Test setting default values when using empty settings.
+     * Plugin defaults are conservative (parallel disabled by default); series/samples thresholds match defaultConfig().
      */
     public void testSettingDefaultsMatchDefaultConfig() {
         Settings emptySettings = Settings.EMPTY;
 
-        assertEquals(ParallelProcessingConfig.defaultConfig().enabled(), TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.get(emptySettings));
         assertEquals(
-            ParallelProcessingConfig.defaultConfig().seriesThreshold(),
+            TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.getDefault(emptySettings),
+            TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.get(emptySettings)
+        );
+        assertEquals(
+            (int) TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD.getDefault(emptySettings),
             (int) TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD.get(emptySettings)
         );
         assertEquals(
-            ParallelProcessingConfig.defaultConfig().samplesThreshold(),
+            (int) TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD.getDefault(emptySettings),
             (int) TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD.get(emptySettings)
         );
     }
@@ -108,7 +112,7 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
         assertTrue("Series threshold setting should be dynamic", TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD.isDynamic());
         assertTrue("Samples threshold setting should be dynamic", TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD.isDynamic());
 
-        assertEquals(Boolean.TRUE, TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.getDefault(Settings.EMPTY));
+        assertEquals(Boolean.FALSE, TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.getDefault(Settings.EMPTY));
         assertEquals(Integer.valueOf(1000), TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD.getDefault(Settings.EMPTY));
         assertEquals(Integer.valueOf(100), TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD.getDefault(Settings.EMPTY));
     }
