@@ -719,7 +719,7 @@ public class PercentileOfSeriesStageTests extends AbstractWireSerializingTestCas
     }
 
     /**
-     * Test process with isCoord=false returns grouped series (MultiValueSample) without percentile expansion.
+     * Test process with coordinatorExecution=false returns grouped series (MultiValueSample) without percentile expansion.
      */
     public void testProcessAsNonCoordinator() {
         PercentileOfSeriesStage stage = new PercentileOfSeriesStage(List.of(50.0f, 95.0f), false);
@@ -729,7 +729,7 @@ public class PercentileOfSeriesStageTests extends AbstractWireSerializingTestCas
         TimeSeries ts1 = new TimeSeries(s1, ByteLabels.fromStrings("host", "h1"), 1000L, 2000L, 1000L, null);
         TimeSeries ts2 = new TimeSeries(s2, ByteLabels.fromStrings("host", "h2"), 1000L, 2000L, 1000L, null);
 
-        List<TimeSeries> result = stage.process(List.of(ts1, ts2), false);
+        List<TimeSeries> result = stage.processWithContext(List.of(ts1, ts2), false, null);
 
         assertEquals(1, result.size());
         TimeSeries grouped = result.get(0);
