@@ -37,7 +37,7 @@ public class MultiValueSample implements Sample, Writeable {
      */
     public MultiValueSample(long timestamp, double value) {
         this.timestamp = timestamp;
-        this.values = new ArrayList<>(1);
+        this.values = new ArrayList<>();
         this.values.add(value);
     }
 
@@ -128,13 +128,14 @@ public class MultiValueSample implements Sample, Writeable {
     }
 
     /**
-     * Get the unsorted list of all values collected for this timestamp.
+     * Get a copy of the unsorted list of all values collected for this timestamp.
+     * Mutations to the returned list do not affect this sample. Use {@link #insert(double)} to add values.
      * If you need sorted values, use {@link #getSortedValueList()} instead.
      *
-     * @return the unsorted list of values
+     * @return a copy of the unsorted list of values
      */
     public List<Double> getValueList() {
-        return values;
+        return new ArrayList<>(values);
     }
 
     /**
