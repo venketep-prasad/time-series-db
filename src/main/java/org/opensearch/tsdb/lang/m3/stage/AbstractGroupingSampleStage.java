@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map.Entry;
 
 /**
  * Abstract base class for pipeline stages that support label grouping and calculation for each Sample.
@@ -41,8 +41,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><strong>Parallel:</strong> Used for large datasets to leverage multi-core CPUs at coordinator level</li>
  * </ul>
  *
- * <p>Parallel processing uses {@link ConcurrentHashMap} for thread-safe aggregation and
- * {@link java.util.concurrent.ForkJoinPool} common pool for work-stealing execution.</p>
+ * <p>Parallel processing uses thread-local aggregation (no shared map contention) then merges
+ * results, with work executed via {@link java.util.concurrent.ForkJoinPool} common pool.</p>
  */
 public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingStage {
 
@@ -223,10 +223,9 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
      *
      * <p>Implementation notes:</p>
      * <ul>
-     *   <li>Uses {@link ConcurrentHashMap} for thread-safe aggregation</li>
+     *   <li>Each thread aggregates a subset of series into a local map (no lock contention)</li>
+     *   <li>Local maps are then reduced by merging buckets per timestamp via {@link #mergeBuckets}</li>
      *   <li>Uses parallel streams backed by {@link java.util.concurrent.ForkJoinPool#commonPool()}</li>
-     *   <li>Each time series is processed independently</li>
-     *   <li>ConcurrentHashMap.compute provides atomic, thread-safe aggregation per timestamp</li>
      * </ul>
      *
      * @param groupSeries List of time series in the same group
@@ -238,12 +237,12 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         long timeRange = firstSeries.getMaxTimestamp() - firstSeries.getMinTimestamp();
         int expectedTimestamps = (int) (timeRange / firstSeries.getStep()) + 1;
 
-        // Use ConcurrentHashMap for thread-safe aggregation
-        // Initial capacity based on expected timestamps, with high load factor to minimize resizing
-        ConcurrentHashMap<Long, A> timestampToAggregated = new ConcurrentHashMap<>(expectedTimestamps, 0.9f);
-
-        // Process all time series in parallel
-        groupSeries.parallelStream().forEach(series -> aggregateSamplesIntoMap(series.getSamples(), timestampToAggregated));
+        // Each thread aggregates into a local map, then we merge (avoids per-key contention)
+        Map<Long, A> timestampToAggregated = groupSeries.parallelStream().map(series -> {
+            Map<Long, A> local = HashMap.newHashMap(expectedTimestamps);
+            aggregateSamplesIntoMap(series.getSamples(), local);
+            return local;
+        }).reduce(new HashMap<>(), this::mergeLocalMaps);
 
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
@@ -329,12 +328,10 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
     }
 
     /**
-     * Parallel reduce implementation using ConcurrentHashMap for thread-safe aggregation.
-     * Uses the same {@link #aggregateSamplesIntoMap} logic as the sequential path so results
-     * are identical to main's reduceGrouped.
-     *
-     * <p>This method processes time series from multiple shards in parallel, significantly
-     * improving performance for large datasets at coordinator level when pushdown is disabled.</p>
+     * Parallel reduce implementation using thread-local aggregation then merge (same pattern as
+     * {@link #processGroupParallel}). Each thread aggregates one or more aggregations into a local
+     * {@code Map<ByteLabels, Map<Long, A>>}, then partial results are combined via {@link #mergeGroupMaps}.
+     * Avoids per-key contention by not sharing maps across threads.
      */
     private InternalAggregation reduceGroupedParallel(
         List<TimeSeriesProvider> aggregations,
@@ -342,32 +339,44 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         TimeSeries firstTimeSeries,
         boolean isFinalReduce
     ) {
-        // Use ConcurrentHashMap for thread-safe group aggregation
-        // Outer map: group labels -> timestamp map. Use compute() (not computeIfAbsent) so
-        // only one inner map is created per group when multiple threads hit the same key.
-        ConcurrentHashMap<ByteLabels, ConcurrentHashMap<Long, A>> groupToTimestampBucket = new ConcurrentHashMap<>();
-
-        // Process all aggregations in parallel
-        aggregations.parallelStream().forEach(aggregation -> {
+        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = aggregations.parallelStream().map(aggregation -> {
+            Map<ByteLabels, Map<Long, A>> local = new HashMap<>();
             for (TimeSeries series : aggregation.getTimeSeries()) {
                 ByteLabels groupLabels = extractGroupLabelsDirect(series);
-
-                // Get or create timestamp map for this group atomically (compute guarantees single map per group)
-                ConcurrentHashMap<Long, A> timestampToBucket = groupToTimestampBucket.compute(
-                    groupLabels,
-                    (k, existing) -> existing != null ? existing : new ConcurrentHashMap<>()
-                );
-
-                // Same aggregation logic as sequential path and main's reduceGrouped
+                Map<Long, A> timestampToBucket = local.computeIfAbsent(groupLabels, k -> new HashMap<>());
                 aggregateSamplesIntoMap(series.getSamples(), timestampToBucket);
             }
-        });
+            return local;
+        }).reduce(new HashMap<>(), this::mergeGroupMaps);
 
-        // Convert ConcurrentHashMap to regular HashMap for finalization
-        Map<ByteLabels, Map<Long, A>> regularMap = new HashMap<>(groupToTimestampBucket.size());
-        groupToTimestampBucket.forEach((groupLabels, timestampToBucket) -> regularMap.put(groupLabels, new HashMap<>(timestampToBucket)));
+        return finalizeReduction(groupToTimestampBucket, firstAgg, firstTimeSeries, isFinalReduce);
+    }
 
-        return finalizeReduction(regularMap, firstAgg, firstTimeSeries, isFinalReduce);
+    /**
+     * Merge two group→timestamp maps (used when reducing parallel reduce partials).
+     * Must not mutate either argument so the combiner is safe when the same identity is
+     * reused in parallel (stream reduce can call combine(identity, p1) and combine(identity, p2)
+     * in different threads, then combine those results).
+     */
+    private Map<ByteLabels, Map<Long, A>> mergeGroupMaps(Map<ByteLabels, Map<Long, A>> a, Map<ByteLabels, Map<Long, A>> b) {
+        if (a.isEmpty()) {
+            return b;
+        }
+        if (b.isEmpty()) {
+            return a;
+        }
+        // Copy a so we never mutate the shared identity; then merge b into the copy
+        Map<ByteLabels, Map<Long, A>> result = new HashMap<>();
+        for (Entry<ByteLabels, Map<Long, A>> e : a.entrySet()) {
+            result.put(e.getKey(), new HashMap<>(e.getValue()));
+        }
+        for (Entry<ByteLabels, Map<Long, A>> e : b.entrySet()) {
+            Map<Long, A> resultTs = result.computeIfAbsent(e.getKey(), k -> new HashMap<>());
+            for (Entry<Long, A> be : e.getValue().entrySet()) {
+                resultTs.compute(be.getKey(), (ts, x) -> mergeBuckets(x, be.getValue(), ts));
+            }
+        }
+        return result;
     }
 
     /**
@@ -419,6 +428,38 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
 
         TimeSeriesProvider result = firstAgg.createReduced(resultTimeSeries);
         return (InternalAggregation) result;
+    }
+
+    /**
+     * Merge two aggregation buckets for the same timestamp (used when reducing thread-local maps).
+     * Default: treat the second bucket as a single sample and aggregate into the first.
+     * Override in stages where buckets must be combined differently (e.g. percentile sorted lists).
+     *
+     * @param existing current bucket for the timestamp (null if none yet)
+     * @param toMerge bucket from another thread to merge in
+     * @param timestamp the timestamp (for sample conversion when needed)
+     * @return merged bucket
+     */
+    protected A mergeBuckets(@Nullable A existing, A toMerge, long timestamp) {
+        return aggregateSingleSample(existing, bucketToSample(timestamp, toMerge));
+    }
+
+    /**
+     * Merge two thread-local timestamp→bucket maps into one. Does not mutate either argument
+     * so the combiner is safe when used with parallel stream reduce (identity may be reused).
+     */
+    private Map<Long, A> mergeLocalMaps(Map<Long, A> a, Map<Long, A> b) {
+        if (a.isEmpty()) {
+            return b;
+        }
+        if (b.isEmpty()) {
+            return a;
+        }
+        Map<Long, A> result = new HashMap<>(a);
+        for (Entry<Long, A> e : b.entrySet()) {
+            result.compute(e.getKey(), (ts, x) -> mergeBuckets(x, e.getValue(), ts));
+        }
+        return result;
     }
 
     /**

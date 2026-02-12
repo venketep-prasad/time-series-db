@@ -32,9 +32,9 @@ import org.opensearch.tsdb.lang.m3.stage.AbstractGroupingSampleStage;
  * </ul>
  *
  * <h2>Thread Safety:</h2>
- * <p>Parallel processing uses {@link java.util.concurrent.ConcurrentHashMap} for
- * thread-safe aggregation and {@link java.util.concurrent.ForkJoinPool} common pool
- * for work-stealing parallel execution.</p>
+ * <p>Parallel processing uses thread-local aggregation, then merges partial
+ * results, avoiding lock contention. Work runs on {@link java.util.concurrent.ForkJoinPool}
+ * common pool.</p>
  *
  * <h2>Settings:</h2>
  * <p>Settings are defined in {@link TSDBPlugin}:</p>
