@@ -1,0 +1,73 @@
+{
+  "size": 0,
+  "aggregations": {
+    "fetch_R1_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1700000000000,
+        "max_timestamp": 1700001200000,
+        "step": 300000,
+        "stages": [
+          {
+            "type": "sum",
+            "group_by_labels": ["service"]
+          }
+        ]
+      }
+    },
+    "fetch_R2_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1700001200000,
+        "max_timestamp": 1700002100000,
+        "step": 300000,
+        "stages": [
+          {
+            "type": "sum",
+            "group_by_labels": ["service"]
+          }
+        ]
+      }
+    },
+    "fetch_R3_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1700002100000,
+        "max_timestamp": 1700002700000,
+        "step": 300000,
+        "stages": [
+          {
+            "type": "sum",
+            "group_by_labels": ["service"]
+          }
+        ]
+      }
+    },
+    "stitch_result": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "_stitch",
+            "sub_queries": {
+              "R1": {
+                "stitch_start": 1700000000000,
+                "stitch_end": 1700001200000
+              },
+              "R2": {
+                "stitch_start": 1700001200000,
+                "stitch_end": 1700002100000
+              },
+              "R3": {
+                "stitch_start": 1700002100000,
+                "stitch_end": 1700002700000
+              }
+            }
+          }
+        ],
+        "references": {
+          "R1": "fetch_R1_unfold",
+          "R2": "fetch_R2_unfold",
+          "R3": "fetch_R3_unfold"
+        },
+        "inputReference": "R1"
+      }
+    }
+  }
+}

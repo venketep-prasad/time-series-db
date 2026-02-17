@@ -380,6 +380,56 @@ public class TimeSeriesCoordinatorAggregationBuilder extends AbstractPipelineAgg
                                             }
                                         }
                                         stageArgs.put(fieldName, arrayValues);
+                                    } else if (token == XContentParser.Token.START_OBJECT) {
+                                        // Parse nested objects/maps for complex stage arguments (e.g., sub_queries in stitch stage)
+                                        Map<String, Object> objectMap = new LinkedHashMap<>();
+                                        XContentParser.Token objToken;
+                                        while ((objToken = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
+                                            if (objToken == XContentParser.Token.FIELD_NAME) {
+                                                String objFieldName = parser.currentName();
+                                                objToken = parser.nextToken();
+
+                                                if (objToken == XContentParser.Token.START_OBJECT) {
+                                                    // Parse nested object
+                                                    Map<String, Object> nestedMap = new LinkedHashMap<>();
+                                                    XContentParser.Token nestedToken;
+                                                    while ((nestedToken = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
+                                                        if (nestedToken == XContentParser.Token.FIELD_NAME) {
+                                                            String nestedFieldName = parser.currentName();
+                                                            nestedToken = parser.nextToken();
+
+                                                            if (nestedToken == XContentParser.Token.VALUE_STRING) {
+                                                                nestedMap.put(nestedFieldName, parser.text());
+                                                            } else if (nestedToken == XContentParser.Token.VALUE_NUMBER) {
+                                                                if (parser.numberType() == XContentParser.NumberType.LONG) {
+                                                                    nestedMap.put(nestedFieldName, parser.longValue());
+                                                                } else if (parser.numberType() == XContentParser.NumberType.INT) {
+                                                                    nestedMap.put(nestedFieldName, parser.intValue());
+                                                                } else {
+                                                                    nestedMap.put(nestedFieldName, parser.doubleValue());
+                                                                }
+                                                            } else if (nestedToken == XContentParser.Token.VALUE_BOOLEAN) {
+                                                                nestedMap.put(nestedFieldName, parser.booleanValue());
+                                                            }
+                                                        }
+                                                    }
+                                                    objectMap.put(objFieldName, nestedMap);
+                                                } else if (objToken == XContentParser.Token.VALUE_STRING) {
+                                                    objectMap.put(objFieldName, parser.text());
+                                                } else if (objToken == XContentParser.Token.VALUE_NUMBER) {
+                                                    if (parser.numberType() == XContentParser.NumberType.LONG) {
+                                                        objectMap.put(objFieldName, parser.longValue());
+                                                    } else if (parser.numberType() == XContentParser.NumberType.INT) {
+                                                        objectMap.put(objFieldName, parser.intValue());
+                                                    } else {
+                                                        objectMap.put(objFieldName, parser.doubleValue());
+                                                    }
+                                                } else if (objToken == XContentParser.Token.VALUE_BOOLEAN) {
+                                                    objectMap.put(objFieldName, parser.booleanValue());
+                                                }
+                                            }
+                                        }
+                                        stageArgs.put(fieldName, objectMap);
                                     } else {
                                         throw new IllegalArgumentException(
                                             "Unsupported token type for stage argument '"
@@ -390,7 +440,7 @@ public class TimeSeriesCoordinatorAggregationBuilder extends AbstractPipelineAgg
                                                 + aggregationName
                                                 + ", Stage type: "
                                                 + (stageType != null ? stageType : "unknown")
-                                                + ". Supported types: string, number, or array of strings."
+                                                + ". Supported types: string, number, array, or object."
                                         );
                                     }
                                 }

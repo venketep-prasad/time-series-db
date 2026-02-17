@@ -1,0 +1,155 @@
+# Migration Partial Query Integration Test
+# Tests split-fetch-stitch approach when only PART of a query involves migrated data
+#
+# SCENARIO: asPercent with partial migration
+#   Query: (fetch service:a name:success | moving 10m sum) | asPercent(fetch service:a name:total | moving 10m sum)
+#   - name:success metric is MIGRATED (spans C1 and C2)
+#   - name:total metric is NOT migrated (only in C1)
+#   - The success metric fetch should be split and stitched BEFORE computing asPercent with total
+#
+# Timeline (same as migration_lookback_it):
+#   - t1 = 0m  - C1 starts
+#   - t3 = 20m - C2 starts (migration begins)
+#   - t2 = 40m - C1 ends (migration completes)
+#   - t4 = 60m - C2 ends
+
+test_setup:
+  name: "Migration Partial Query Integration Test"
+  description: "Validates split-fetch-stitch when only part of a query involves migrated data"
+
+  index_configs:
+    - name: "metrics_c1"  # Pre-migration cluster
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_c2"  # Post-migration cluster (only contains migrated metrics)
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_baseline"  # Complete data (no migration)
+      shards: 1
+      replicas: 0
+
+test_case:
+  name: "Partial Query Migration Tests"
+
+  input_data_list:
+    # ========================================================================
+    # C1: Contains migrated metrics for [0m, 40m] and non-migrated for full range [0m, 60m]
+    # ========================================================================
+    - index_name: "metrics_c1"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T01:00:00Z"  # Full range to t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # SCENARIO 1: service:a name:success (MIGRATED to C2, only [0m, 40m] in C1)
+        - labels: "name:success,service:a,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90, null, null, null, null]
+
+        # SCENARIO 1: service:a name:total (NOT migrated, full range in C1)
+        - labels: "name:total,service:a,env:prod"
+          values: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+
+        # SCENARIO 2: service:b name:success (NOT migrated, full range in C1)
+        - labels: "name:success,service:b,env:prod"
+          values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+
+    # ========================================================================
+    # C2: Contains ONLY MIGRATED metrics for [20m, 60m] = 9 data points
+    # ========================================================================
+    - index_name: "metrics_c2"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:20:00Z"  # t3 = 20m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # SCENARIO 1 & 2: service:a name:success (MIGRATED)
+        # Overlap [20m, 40m]: values [50, 60, 70, 80, 90] match C1
+        # Post-migration [45m, 60m]: values [100, 110, 120, 130]
+        - labels: "name:success,service:a,env:prod"
+          values: [50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+        # Note: service:a name:total is NOT in C2 (not migrated)
+        # Note: service:b name:success is NOT in C2 (not migrated)
+
+    # ========================================================================
+    # Baseline: Complete data [0m, 60m] = 13 data points (no migration)
+    # ========================================================================
+    - index_name: "metrics_baseline"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # SCENARIO 1: service:a name:success (complete, no migration)
+        - labels: "name:success,service:a,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+        # SCENARIO 1: service:a name:total (complete, no migration)
+        - labels: "name:total,service:a,env:prod"
+          values: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+
+        # SCENARIO 2: service:a name:success (complete, no migration)
+        # Same as above, reusing the metric
+
+        # SCENARIO 2: service:b name:success (complete, no migration)
+        - labels: "name:success,service:b,env:prod"
+          values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+
+  queries:
+    # ============================================================================
+    # SCENARIO 1: asPercent with Partial Migration
+    # Query: (fetch service:a name:success | moving 10m sum) | asPercent(fetch service:a name:total | moving 10m sum)
+    # ============================================================================
+
+    # Baseline: Normal M3 query on complete data (no migration)
+    - name: "aspercent_10m_baseline"
+      type: "m3ql"
+      query: "(fetch service:a name:success | moving 10m sum) | asPercent(fetch service:a name:total | moving 10m sum)"
+      indices: "metrics_baseline"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Moving 10m sum for success: [null, 10, 30, 50, 70, 90, 110, 130, 150, 170, 190, 210, 230]
+          # Moving 10m sum for total:   [null, 100, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200]
+          # asPercent: (success / total) * 100
+          #
+          # Point 0  (0m):   null (window not full)
+          # Point 1  (5m):   (10 / 100) * 100 = 10.0
+          # Point 2  (10m):  (30 / 200) * 100 = 15.0
+          # Point 3  (15m):  (50 / 200) * 100 = 25.0
+          # Point 4  (20m):  (70 / 200) * 100 = 35.0
+          # Point 5  (25m):  (90 / 200) * 100 = 45.0
+          # Point 6  (30m):  (110 / 200) * 100 = 55.0 (floating point: 55.00000000000001)
+          # Point 7  (35m):  (130 / 200) * 100 = 65.0
+          # Point 8  (40m):  (150 / 200) * 100 = 75.0
+          # Point 9  (45m):  (170 / 200) * 100 = 85.0
+          # Point 10 (50m):  (190 / 200) * 100 = 95.0
+          # Point 11 (55m):  (210 / 200) * 100 = 105.0
+          # Point 12 (60m):  (230 / 200) * 100 = 115.0 (floating point: 114.99999999999999)
+          - metric: {name: "success", service: "a", env: "prod", type: "ratios"}
+            values: [null, 10.0, 15.0, 25.0, 35.0, 45.0, 55.00000000000001, 65.0, 75.0, 85.0, 95.0, 105.0, 114.99999999999999]
+
+    # Migration case: Split-fetch-stitch for success metric only
+    - name: "aspercent_10m_migration"
+      type: "dsl"
+      indices: "metrics_c1,metrics_c2"
+      dsl_file: "test_cases/migration_aspercent_10m_dsl.json"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Should match baseline exactly!
+          - metric: {name: "success", service: "a", env: "prod", type: "ratios"}
+            values: [null, 10.0, 15.0, 25.0, 35.0, 45.0, 55.00000000000001, 65.0, 75.0, 85.0, 95.0, 105.0, 114.99999999999999]

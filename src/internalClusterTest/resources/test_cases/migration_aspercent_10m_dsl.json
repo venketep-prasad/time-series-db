@@ -1,0 +1,174 @@
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "labels": {
+        "value": "service:a"
+      }
+    }
+  },
+  "aggregations": {
+    "filter_success_R1": {
+      "filter": {
+        "term": {
+          "labels": {
+            "value": "name:success"
+          }
+        }
+      },
+      "aggs": {
+        "fetch_success_R1_unfold": {
+          "time_series_unfold": {
+            "min_timestamp": 1735689000000,
+            "max_timestamp": 1735691100000,
+            "step": 300000,
+            "stages": [
+              {
+                "type": "moving",
+                "time_interval": "10m",
+                "function": "sum"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "filter_success_R2": {
+      "filter": {
+        "term": {
+          "labels": {
+            "value": "name:success"
+          }
+        }
+      },
+      "aggs": {
+        "fetch_success_R2_unfold": {
+          "time_series_unfold": {
+            "min_timestamp": 1735690200000,
+            "max_timestamp": 1735692600000,
+            "step": 300000,
+            "stages": []
+          }
+        }
+      }
+    },
+    "filter_success_R3": {
+      "filter": {
+        "term": {
+          "labels": {
+            "value": "name:success"
+          }
+        }
+      },
+      "aggs": {
+        "fetch_success_R3_unfold": {
+          "time_series_unfold": {
+            "min_timestamp": 1735692000000,
+            "max_timestamp": 1735693500000,
+            "step": 300000,
+            "stages": [
+              {
+                "type": "moving",
+                "time_interval": "10m",
+                "function": "sum"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "success_R2_with_moving_sum": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "moving",
+            "time_interval": "10m",
+            "function": "sum"
+          }
+        ],
+        "references": {
+          "R2": "filter_success_R2>fetch_success_R2_unfold"
+        },
+        "inputReference": "R2"
+      }
+    },
+    "stitch_success_result": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "_stitch",
+            "sub_queries": {
+              "R1": {
+                "stitch_start": 1735689600000,
+                "stitch_end": 1735690800000
+              },
+              "R2": {
+                "stitch_start": 1735690800000,
+                "stitch_end": 1735692600000
+              },
+              "R3": {
+                "stitch_start": 1735692600000,
+                "stitch_end": 1735693500000
+              }
+            }
+          }
+        ],
+        "references": {
+          "R1": "filter_success_R1>fetch_success_R1_unfold",
+          "R2": "success_R2_with_moving_sum",
+          "R3": "filter_success_R3>fetch_success_R3_unfold"
+        },
+        "inputReference": "R1"
+      }
+    },
+    "filter_total": {
+      "filter": {
+        "term": {
+          "labels": {
+            "value": "name:total"
+          }
+        }
+      },
+      "aggs": {
+        "fetch_total_unfold": {
+          "time_series_unfold": {
+            "min_timestamp": 1735689000000,
+            "max_timestamp": 1735693500000,
+            "step": 300000,
+            "stages": []
+          }
+        }
+      }
+    },
+    "total_with_moving_sum": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "moving",
+            "time_interval": "10m",
+            "function": "sum"
+          }
+        ],
+        "references": {
+          "total": "filter_total>fetch_total_unfold"
+        },
+        "inputReference": "total"
+      }
+    },
+    "aspercent_result": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "as_percent",
+            "right_op_reference": "total"
+          }
+        ],
+        "references": {
+          "success": "stitch_success_result",
+          "total": "total_with_moving_sum"
+        },
+        "inputReference": "success"
+      }
+    }
+  }
+}

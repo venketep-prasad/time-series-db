@@ -41,8 +41,7 @@ public class SearchQueryExecutor extends BaseQueryExecutor {
      * @return PromMatrixResponse containing query results in Prometheus format
      * @throws Exception if query execution fails
      */
-    @Override
-    protected PromMatrixResponse executeQuery(QueryConfig query, String indexName) throws Exception {
+    public PromMatrixResponse executeQuery(QueryConfig query, String indexName) throws Exception {
         QueryConfigTranslator translator = query.type().createTranslator();
         SearchRequest searchRequest = translator.translate(query, indexName);
 

@@ -1,0 +1,191 @@
+# Migration Lookback Integration Test
+# Tests split-fetch-stitch approach for queries with lookback operations during metric migration
+#
+# SCENARIO:
+# A metric migrates from index1 (C1) to index2 (C2) with overlapping time ranges.
+# Timeline:
+#   - t1 = 0m  - C1 starts
+#   - t3 = 20m - C2 starts (migration begins)
+#   - t2 = 40m - C1 ends (migration completes)
+#   - t4 = 60m - C2 ends
+#   - Overlap: [20m, 40m] - data exists in BOTH indices
+#
+# SPLIT-FETCH-STITCH STRATEGY for lookback operations:
+#   1. Fetch1: [t1-lookback, t3], Stitch [t1, t3] - Pushdown to C1
+#   2. Fetch2: [t3, t2+lookback], Stitch [t3, t2+lookback] - NO pushdown (coordinator computes)
+#   3. Fetch3: [t2, t4], Stitch [t2+lookback, t4] - Pushdown to C2
+
+test_setup:
+  name: "Migration Lookback Integration Test"
+  description: "Validates split-fetch-stitch for lookback operations during data migration"
+
+  index_configs:
+    - name: "metrics_c1"  # Pre-migration cluster
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_c2"  # Post-migration cluster
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_baseline"  # Complete data (no migration)
+      shards: 1
+      replicas: 0
+
+test_case:
+  name: "Migration with Lookback Operations"
+
+  input_data_list:
+    # C1: Contains data for [0m, 40m] = 9 data points
+    - index_name: "metrics_c1"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T00:40:00Z"  # t2 = 40m
+        step: "5m"
+      regular_metrics:
+        # Metric for moving sum test
+        - labels: "name:cpu_usage,host:server1,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90]
+
+        # Metric for keeplastvalue test (with gaps)
+        - labels: "name:memory_usage,host:server2,env:prod"
+          values: [100, null, null, 200, 300, null, 400, 500, null]
+
+    # C2: Contains data for [20m, 60m] = 9 data points
+    # IMPORTANT: Data for overlap [20m, 40m] MUST match C1
+    - index_name: "metrics_c2"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:20:00Z"  # t3 = 20m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # Overlap [20m, 40m]: values [50, 60, 70, 80, 90] match C1
+        # Post-migration [45m, 60m]: values [100, 110, 120, 130]
+        - labels: "name:cpu_usage,host:server1,env:prod"
+          values: [50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+        # Overlap [20m, 40m]: values [300, null, 400, 500, null] match C1
+        # Post-migration [45m, 60m]: values [600, null, 700, 800]
+        - labels: "name:memory_usage,host:server2,env:prod"
+          values: [300, null, 400, 500, null, 600, null, 700, 800]
+
+    # Baseline: Complete data [0m, 60m] = 13 data points
+    - index_name: "metrics_baseline"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # Complete cpu_usage data (no migration)
+        - labels: "name:cpu_usage,host:server1,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+        # Complete memory_usage data with gaps (no migration)
+        - labels: "name:memory_usage,host:server2,env:prod"
+          values: [100, null, null, 200, 300, null, 400, 500, null, 600, null, 700, 800]
+
+  queries:
+    # ============================================================================
+    # TEST 1: Moving 10m Sum (Lookback = 10m = 2 intervals)
+    # ============================================================================
+
+    # Baseline: Normal M3 query on complete data (no migration)
+    - name: "moving_sum_10m_baseline"
+      type: "m3ql"
+      query: "fetch name:cpu_usage | moving 10m sum"
+      indices: "metrics_baseline"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"  # Extended by one step to include last point
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Moving 10m sum at 5m step = window of 2 data points (current + 1 previous)
+          # Data: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+          #
+          # Point 0  (0m):  null (window not full, need at least 2 points)
+          # Point 1  (5m):  10                      = 10 (window filling)
+          # Point 2  (10m): 10+20                   = 30
+          # Point 3  (15m): 20+30                   = 50
+          # Point 4  (20m): 30+40                   = 70  <- t3 (migration starts)
+          # Point 5  (25m): 40+50                   = 90
+          # Point 6  (30m): 50+60                   = 110
+          # Point 7  (35m): 60+70                   = 130
+          # Point 8  (40m): 70+80                   = 150  <- t2 (migration ends)
+          # Point 9  (45m): 80+90                   = 170
+          # Point 10 (50m): 90+100                  = 190  <- t2+10m (Fetch3 stitch starts)
+          # Point 11 (55m): 100+110                 = 210
+          # Point 12 (60m): 110+120                 = 230
+          - metric: {name: "cpu_usage", host: "server1", env: "prod"}
+            values: [null, 10, 30, 50, 70, 90, 110, 130, 150, 170, 190, 210, 230]
+
+    # Migration case: Split-fetch-stitch on migrated data
+    - name: "moving_sum_10m_migration"
+      type: "dsl"
+      indices: "metrics_c1,metrics_c2"
+      dsl_file: "test_cases/migration_moving_sum_10m_dsl.json"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"  # Extended to include last point
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Should match baseline exactly!
+          - metric: {name: "cpu_usage", host: "server1", env: "prod"}
+            values: [null, 10, 30, 50, 70, 90, 110, 130, 150, 170, 190, 210, 230]
+
+    # ============================================================================
+    # TEST 2: KeepLastValue 10m (Lookback = 10m = 2 intervals)
+    # ============================================================================
+
+    # Baseline: Normal M3 query on complete data (no migration)
+    - name: "keeplastvalue_10m_baseline"
+      type: "m3ql"
+      query: "fetch name:memory_usage | keepLastValue 10m"
+      indices: "metrics_baseline"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"  # Extended by one step to include last point
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # KeepLastValue 10m fills nulls with last value within 10m (2 intervals)
+          # Data: [100, null, null, 200, 300, null, 400, 500, null, 600, null, 700, 800]
+          #
+          # Point 0  (0m):  100
+          # Point 1  (5m):  null -> 100  (from point 0, 5m ago)
+          # Point 2  (10m): null -> 100  (from point 0, 10m ago)
+          # Point 3  (15m): 200
+          # Point 4  (20m): 300          <- t3
+          # Point 5  (25m): null -> 300  (from point 4, 5m ago)
+          # Point 6  (30m): 400
+          # Point 7  (35m): 500
+          # Point 8  (40m): null -> 500  <- t2
+          # Point 9  (45m): 600
+          # Point 10 (50m): null -> 600  <- t2+10m (Fetch3 stitch starts)
+          # Point 11 (55m): 700
+          # Point 12 (60m): 800
+          - metric: {name: "memory_usage", host: "server2", env: "prod"}
+            values: [100, 100, 100, 200, 300, 300, 400, 500, 500, 600, 600, 700, 800]
+
+    # Migration case: Split-fetch-stitch on migrated data
+    - name: "keeplastvalue_10m_migration"
+      type: "dsl"
+      indices: "metrics_c1,metrics_c2"
+      dsl_file: "test_cases/migration_keeplastvalue_10m_dsl.json"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"  # Extended to include last point
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Should match baseline exactly!
+          - metric: {name: "memory_usage", host: "server2", env: "prod"}
+            values: [100, 100, 100, 200, 300, 300, 400, 500, 500, 600, 600, 700, 800]

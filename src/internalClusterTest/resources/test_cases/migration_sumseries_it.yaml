@@ -1,0 +1,124 @@
+# Migration SumSeries Integration Test
+# Tests split-fetch-stitch when only some series matching a query are migrated
+#
+# SCENARIO: sumSeries with Selective Migration
+#   Query: fetch name:success | sumSeries name | moving 5m sum
+#   - service:a name:success is MIGRATED (spans C1 and C2)
+#   - service:b name:success is NOT migrated (only in C1)
+#   - The fetch should be split and stitched for service:a, while service:b is fetched normally
+#
+# Timeline:
+#   - t1 = 0m  - C1 starts
+#   - t3 = 20m - C2 starts (migration begins)
+#   - t2 = 40m - C1 migration completes (migrated metrics end in C1)
+#   - t4 = 60m - C2 ends
+
+test_setup:
+  name: "Migration SumSeries Integration Test"
+  description: "Validates split-fetch-stitch when only some series in a query are migrated"
+
+  index_configs:
+    - name: "metrics_c1"  # Pre-migration cluster + non-migrated metrics
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_c2"  # Post-migration cluster (only migrated metrics)
+      shards: 1
+      replicas: 0
+
+    - name: "metrics_baseline"  # Complete data (no migration)
+      shards: 1
+      replicas: 0
+
+test_case:
+  name: "SumSeries with Selective Migration"
+
+  input_data_list:
+    # C1: Contains migrated service:a for [0m, 40m] and non-migrated service:b for full range
+    - index_name: "metrics_c1"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T01:00:00Z"  # Full range to t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # service:a name:success (MIGRATED, only [0m, 40m] in C1)
+        - labels: "name:success,service:a,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90, null, null, null, null]
+
+        # service:b name:success (NOT migrated, full range in C1)
+        - labels: "name:success,service:b,env:prod"
+          values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+
+    # C2: Contains ONLY service:a name:success for [20m, 60m]
+    - index_name: "metrics_c2"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:20:00Z"  # t3 = 20m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # service:a name:success (MIGRATED)
+        # Overlap [20m, 40m]: values [50, 60, 70, 80, 90] match C1
+        # Post-migration [45m, 60m]: values [100, 110, 120, 130]
+        - labels: "name:success,service:a,env:prod"
+          values: [50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+    # Baseline: Complete data for all metrics [0m, 60m]
+    - index_name: "metrics_baseline"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"  # t1 = 0m
+        max_timestamp: "2025-01-01T01:00:00Z"  # t4 = 60m
+        step: "5m"
+      regular_metrics:
+        # service:a name:success (complete, no migration)
+        - labels: "name:success,service:a,env:prod"
+          values: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+
+        # service:b name:success (complete, no migration)
+        - labels: "name:success,service:b,env:prod"
+          values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+
+  queries:
+    # Baseline: Normal M3 query on complete data (no migration)
+    - name: "sumseries_5m_baseline"
+      type: "m3ql"
+      query: "fetch name:success | sumSeries name | moving 5m sum"
+      indices: "metrics_baseline"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # sumSeries combines service:a and service:b name:success
+          # service:a: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+          # service:b: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+          # sumSeries: [15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195]
+          #
+          # Moving 5m sum at 5m step = window of 1 interval (current point only)
+          # Point 0  (0m):   null (first point, window might not be full)
+          # Point 1  (5m):   15  (current value)
+          # Point 2  (10m):  30  (current value)
+          # Point 3  (15m):  45  (current value)
+          # ... and so on
+          - metric: {name: "success"}
+            values: [null, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
+
+    # Migration case: Split-fetch-stitch for service:a, normal fetch for service:b
+    - name: "sumseries_5m_migration"
+      type: "dsl"
+      indices: "metrics_c1,metrics_c2"
+      dsl_file: "test_cases/migration_sumseries_5m_dsl.json"
+      time_config:
+        min_timestamp: "2025-01-01T00:00:00Z"
+        max_timestamp: "2025-01-01T01:05:00Z"
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Should match baseline exactly!
+          - metric: {name: "success"}
+            values: [null, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]

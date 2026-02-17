@@ -17,7 +17,8 @@ import java.util.Locale;
  */
 public enum QueryType {
     M3QL("m3ql", "/_m3ql"),
-    PROMQL("promql", "/_promql");
+    PROMQL("promql", "/_promql"),
+    DSL("dsl", "/_search");
 
     private final String value;
     private final String restEndpoint;
@@ -92,6 +93,7 @@ public enum QueryType {
         return switch (this) {
             case M3QL -> new M3QLTranslator();
             case PROMQL -> new PromQLTranslator();
+            case DSL -> new DSLTranslator();
         };
     }
 

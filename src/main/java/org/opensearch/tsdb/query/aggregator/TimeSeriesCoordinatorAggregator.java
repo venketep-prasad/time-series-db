@@ -17,6 +17,7 @@ import org.opensearch.search.aggregations.InternalAggregation.ReduceContext;
 import org.opensearch.search.aggregations.bucket.InternalSingleBucketAggregation;
 import org.opensearch.search.aggregations.pipeline.SiblingPipelineAggregator;
 import org.opensearch.tsdb.query.stage.BinaryPipelineStage;
+import org.opensearch.tsdb.query.stage.MultiInputPipelineStage;
 import org.opensearch.tsdb.query.stage.PipelineStage;
 import org.opensearch.tsdb.query.stage.PipelineStageExecutor;
 import org.opensearch.tsdb.query.stage.PipelineStageFactory;
@@ -411,7 +412,28 @@ public class TimeSeriesCoordinatorAggregator extends SiblingPipelineAggregator {
         List<TimeSeries> resultTimeSeries = input;
 
         for (PipelineStage stage : stages) {
-            if (stage instanceof BinaryPipelineStage binaryStage) {
+            if (stage instanceof MultiInputPipelineStage multiInputStage) {
+                // For multi-input stages, collect all required inputs from available references
+                List<String> requiredRefs = multiInputStage.getInputReferences();
+                Map<String, List<TimeSeries>> inputs = new LinkedHashMap<>(requiredRefs.size());
+
+                for (String refName : requiredRefs) {
+                    List<TimeSeries> refData = availableReferences.get(refName);
+                    if (refData == null) {
+                        throw new IllegalArgumentException(
+                            "Referenced aggregation not found for "
+                                + multiInputStage.getClass().getSimpleName()
+                                + ": "
+                                + refName
+                                + ". Available references: "
+                                + availableReferences.keySet()
+                        );
+                    }
+                    inputs.put(refName, refData);
+                }
+
+                resultTimeSeries = multiInputStage.process(inputs);
+            } else if (stage instanceof BinaryPipelineStage binaryStage) {
                 // For binary stages, determine the left and right operands
                 List<TimeSeries> left = resultTimeSeries;
                 String rightRefName = binaryStage.getRightOpReferenceName();

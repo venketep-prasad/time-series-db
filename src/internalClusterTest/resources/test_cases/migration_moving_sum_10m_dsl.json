@@ -1,0 +1,92 @@
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "labels": {
+        "value": "name:cpu_usage"
+      }
+    }
+  },
+  "aggregations": {
+    "fetch_R1_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1735689000000,
+        "max_timestamp": 1735691100000,
+        "step": 300000,
+        "stages": [
+          {
+            "type": "moving",
+            "time_interval": "10m",
+            "function": "sum"
+          }
+        ]
+      }
+    },
+    "fetch_R2_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1735690200000,
+        "max_timestamp": 1735692900000,
+        "step": 300000,
+        "stages": []
+      }
+    },
+    "fetch_R3_unfold": {
+      "time_series_unfold": {
+        "min_timestamp": 1735692000000,
+        "max_timestamp": 1735693500000,
+        "step": 300000,
+        "stages": [
+          {
+            "type": "moving",
+            "time_interval": "10m",
+            "function": "sum"
+          }
+        ]
+      }
+    },
+    "R2_with_moving_sum": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "moving",
+            "time_interval": "10m",
+            "function": "sum"
+          }
+        ],
+        "references": {
+          "R2": "fetch_R2_unfold"
+        },
+        "inputReference": "R2"
+      }
+    },
+    "stitch_result": {
+      "coordinator_pipeline": {
+        "stages": [
+          {
+            "type": "_stitch",
+            "sub_queries": {
+              "R1": {
+                "stitch_start": 1735689600000,
+                "stitch_end": 1735690800000
+              },
+              "R2": {
+                "stitch_start": 1735690800000,
+                "stitch_end": 1735692600000
+              },
+              "R3": {
+                "stitch_start": 1735692600000,
+                "stitch_end": 1735693500000
+              }
+            }
+          }
+        ],
+        "references": {
+          "R1": "fetch_R1_unfold",
+          "R2": "R2_with_moving_sum",
+          "R3": "fetch_R3_unfold"
+        },
+        "inputReference": "R1"
+      }
+    }
+  }
+}

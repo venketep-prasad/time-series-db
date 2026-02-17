@@ -1,0 +1,81 @@
+# Split Fetch with Stitch Integration Test
+# Tests that split fetch + stitch produces the same results as a normal M3QL query
+
+test_setup:
+  name: "Split Fetch with Stitch Integration Test"
+  description: "Validates that splitting a fetch across time ranges and stitching the results produces identical output to a normal fetch"
+
+  index_configs:
+    - name: "metrics_stitch_test"
+      shards: 1
+      replicas: 0
+
+test_case:
+  name: "Split Fetch Stitch Validation"
+
+  # Create test data spanning 40 minutes with 5-minute intervals (9 data points)
+  # Using fixed timestamps to ensure DSL query can reference exact values
+  input_data_list:
+    - index_name: "metrics_stitch_test"
+      input_data_type: FIXED_INTERVAL
+      time_config:
+        min_timestamp: 1700000000000  # Fixed timestamp: Nov 14, 2023 22:13:20 GMT
+        max_timestamp: 1700002700000  # Extended to include all 9 data points
+        step: "5m"
+      regular_metrics:
+        # Service: api, Region: us-west
+        - labels: "__name__:http_requests,service:api,region:us-west"
+          values: [100, 110, 120, 130, 140, 150, 160, 170, 180]
+
+        # Service: api, Region: us-east
+        - labels: "__name__:http_requests,service:api,region:us-east"
+          values: [80, 85, 90, 95, 100, 105, 110, 115, 120]
+
+        # Service: web, Region: us-west
+        - labels: "__name__:http_requests,service:web,region:us-west"
+          values: [200, 210, 220, 230, 240, 250, 260, 270, 280]
+
+        # Service: web, Region: us-east
+        - labels: "__name__:http_requests,service:web,region:us-east"
+          values: [150, 155, 160, 165, 170, 175, 180, 185, 190]
+
+  queries:
+    # Query 1: Normal M3QL query - this is our baseline
+    - name: "normal_m3ql_sum_by_service"
+      type: "m3ql"
+      query: "fetch __name__:http_requests | sumSeries service"
+      indices: "metrics_stitch_test"
+      time_config:
+        min_timestamp: 1700000000000
+        max_timestamp: 1700002700000  # Extended to include last point (1700002400000 + 300000)
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Service: api (us-west + us-east)
+          - metric: {service: "api"}
+            values: [180, 195, 210, 225, 240, 255, 270, 285, 300]
+
+          # Service: web (us-west + us-east)
+          - metric: {service: "web"}
+            values: [350, 365, 380, 395, 410, 425, 440, 455, 470]
+
+    # Query 2: Split fetch with stitch - should produce identical results
+    # Splits the 40-minute range into 3 sub-queries and stitches them together
+    - name: "split_fetch_with_stitch"
+      type: "dsl"
+      indices: "metrics_stitch_test"
+      dsl_file: "test_cases/split_fetch_stitch_dsl.json"
+      time_config:
+        min_timestamp: 1700000000000
+        max_timestamp: 1700002700000
+        step: "5m"
+      expected:
+        status: "success"
+        data:
+          # Should match normal M3QL query exactly
+          - metric: {service: "api"}
+            values: [180, 195, 210, 225, 240, 255, 270, 285, 300]
+
+          - metric: {service: "web"}
+            values: [350, 365, 380, 395, 410, 425, 440, 455, 470]

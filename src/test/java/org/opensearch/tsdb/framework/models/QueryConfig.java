@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import org.opensearch.tsdb.framework.translators.QueryType;
 import org.opensearch.tsdb.query.rest.ResolvedPartitions;
 
+import java.util.Map;
+
 /**
  * Query configuration for time series testing.
  *
@@ -36,9 +38,36 @@ import org.opensearch.tsdb.query.rest.ResolvedPartitions;
  *       step: "10m"
  * }</pre>
  *
+ * <h3>DSL Query Example (inline):</h3>
+ * <pre>{@code
+ * queries:
+ *   - name: "split_fetch_with_stitch"
+ *     type: "dsl"
+ *     dsl_body:
+ *       size: 0
+ *       aggregations:
+ *         R1_filter:
+ *           filter:
+ *             range:
+ *               "@timestamp": {gte: 1000, lte: 2000}
+ *         # ... more aggregations
+ *     indices: "metrics"
+ * }</pre>
+ *
+ * <h3>DSL Query Example (file reference):</h3>
+ * <pre>{@code
+ * queries:
+ *   - name: "split_fetch_with_stitch"
+ *     type: "dsl"
+ *     dsl_file: "test_cases/my_query_dsl.json"
+ *     indices: "metrics"
+ * }</pre>
+ *
  * @param name Query name for identification
- * @param type Query type (M3QL or PromQL)
- * @param query The query string
+ * @param type Query type (M3QL, PromQL, or DSL)
+ * @param query The query string (for M3QL/PromQL)
+ * @param dslBody The DSL body as a Map (for inline DSL queries)
+ * @param dslFile Path to a JSON file containing the DSL body (relative to resources)
  * @param config Time configuration
  * @param indices Target indices (comma-separated, may include cluster prefixes)
  * @param disablePushdown Optional flag to disable query pushdown
@@ -47,6 +76,7 @@ import org.opensearch.tsdb.query.rest.ResolvedPartitions;
  * @param expected Expected response for validation
  */
 public record QueryConfig(@JsonProperty("name") String name, @JsonProperty("type") QueryType type, @JsonProperty("query") String query,
+    @JsonProperty("dsl_body") Map<String, Object> dslBody, @JsonProperty("dsl_file") String dslFile,
     @JsonProperty("time_config") TimeConfig config, @JsonProperty("indices") String indices,
     @JsonProperty("disable_pushdown") Boolean disablePushdown, @JsonProperty("ccs_minimize_roundtrips") Boolean ccsMinimizeRoundtrips,
     @JsonProperty("resolved_partitions") @JsonDeserialize(using = ResolvedPartitionsYamlAdapter.Deserializer.class) ResolvedPartitions resolvedPartitions,
