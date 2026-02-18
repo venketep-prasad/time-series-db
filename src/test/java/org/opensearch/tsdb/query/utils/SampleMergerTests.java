@@ -152,14 +152,15 @@ public class SampleMergerTests extends OpenSearchTestCase {
 
     public void testMergeSumValuesNonFloatFallback() {
         SampleMerger merger = new SampleMerger(SampleMerger.DeduplicatePolicy.SUM_VALUES);
-        // Duplicate timestamp: one FloatSample, one SumCountSample -> fallback to ANY_WINS (return newSample)
+        // Duplicate timestamp: one FloatSample, one SumCountSample -> fallback to ANY_WINS (use second sample's value).
+        // Output is always FloatSample per SampleMerger contract.
         List<Sample> samples1 = Arrays.asList(new FloatSample(1000L, 10.0));
         List<Sample> samples2 = Arrays.asList(new SumCountSample(1000L, 30.0, 2));
 
         List<Sample> result = merger.merge(SampleList.fromList(samples1), SampleList.fromList(samples2), true).toList();
 
         assertEquals(1, result.size());
-        assertTrue(result.get(0) instanceof SumCountSample);
-        assertThat(result.get(0).getValue(), equalTo(15.0)); // 30/2 average
+        assertTrue(result.get(0) instanceof FloatSample);
+        assertThat(result.get(0).getValue(), equalTo(15.0)); // 30/2 average from SumCountSample
     }
 }
