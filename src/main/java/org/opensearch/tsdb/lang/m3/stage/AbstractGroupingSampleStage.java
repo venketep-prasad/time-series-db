@@ -237,12 +237,14 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         long timeRange = firstSeries.getMaxTimestamp() - firstSeries.getMinTimestamp();
         int expectedTimestamps = (int) (timeRange / firstSeries.getStep()) + 1;
 
-        // Each thread aggregates into a local map, then we merge (avoids per-key contention)
-        Map<Long, A> timestampToAggregated = groupSeries.parallelStream().map(series -> {
-            Map<Long, A> local = HashMap.newHashMap(expectedTimestamps);
-            aggregateSamplesIntoMap(series.getSamples(), local);
-            return local;
-        }).reduce(new HashMap<>(), this::mergeLocalMaps);
+        // Each thread accumulates into a thread-local map via collect (avoids per-key contention
+        // and unnecessary HashMap copying that reduce() would cause)
+        Map<Long, A> timestampToAggregated = groupSeries.parallelStream()
+            .collect(
+                () -> HashMap.newHashMap(expectedTimestamps),
+                (map, series) -> aggregateSamplesIntoMap(series.getSamples(), map),
+                this::combineLocalMaps
+            );
 
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
@@ -329,8 +331,8 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
 
     /**
      * Parallel reduce implementation using thread-local aggregation then merge (same pattern as
-     * {@link #processGroupParallel}). Each thread aggregates one or more aggregations into a local
-     * {@code Map<ByteLabels, Map<Long, A>>}, then partial results are combined via {@link #mergeGroupMaps}.
+     * {@link #processGroupParallel}). Uses {@code collect()} so each thread accumulates into its own
+     * mutable map, then partial results are combined via {@link #combineGroupMaps}.
      * Avoids per-key contention by not sharing maps across threads.
      */
     private InternalAggregation reduceGroupedParallel(
@@ -339,44 +341,30 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         TimeSeries firstTimeSeries,
         boolean isFinalReduce
     ) {
-        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = aggregations.parallelStream().map(aggregation -> {
-            Map<ByteLabels, Map<Long, A>> local = new HashMap<>();
+        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = aggregations.parallelStream().collect(HashMap::new, (local, aggregation) -> {
             for (TimeSeries series : aggregation.getTimeSeries()) {
                 ByteLabels groupLabels = extractGroupLabelsDirect(series);
                 Map<Long, A> timestampToBucket = local.computeIfAbsent(groupLabels, k -> new HashMap<>());
                 aggregateSamplesIntoMap(series.getSamples(), timestampToBucket);
             }
-            return local;
-        }).reduce(new HashMap<>(), this::mergeGroupMaps);
+        }, this::combineGroupMaps);
 
         return finalizeReduction(groupToTimestampBucket, firstAgg, firstTimeSeries, isFinalReduce);
     }
 
     /**
-     * Merge two group→timestamp maps (used when reducing parallel reduce partials).
-     * Must not mutate either argument so the combiner is safe when the same identity is
-     * reused in parallel (stream reduce can call combine(identity, p1) and combine(identity, p2)
-     * in different threads, then combine those results).
+     * Combine two group→timestamp maps by merging {@code source} into {@code target} (mutates target).
+     * Used as the combiner in {@code collect()} for parallel reduce.
      */
-    private Map<ByteLabels, Map<Long, A>> mergeGroupMaps(Map<ByteLabels, Map<Long, A>> a, Map<ByteLabels, Map<Long, A>> b) {
-        if (a.isEmpty()) {
-            return b;
-        }
-        if (b.isEmpty()) {
-            return a;
-        }
-        // Copy a so we never mutate the shared identity; then merge b into the copy
-        Map<ByteLabels, Map<Long, A>> result = new HashMap<>();
-        for (Entry<ByteLabels, Map<Long, A>> e : a.entrySet()) {
-            result.put(e.getKey(), new HashMap<>(e.getValue()));
-        }
-        for (Entry<ByteLabels, Map<Long, A>> e : b.entrySet()) {
-            Map<Long, A> resultTs = result.computeIfAbsent(e.getKey(), k -> new HashMap<>());
-            for (Entry<Long, A> be : e.getValue().entrySet()) {
-                resultTs.compute(be.getKey(), (ts, x) -> mergeBuckets(x, be.getValue(), ts));
+    private void combineGroupMaps(Map<ByteLabels, Map<Long, A>> target, Map<ByteLabels, Map<Long, A>> source) {
+        for (Entry<ByteLabels, Map<Long, A>> e : source.entrySet()) {
+            Map<Long, A> targetTs = target.get(e.getKey());
+            if (targetTs == null) {
+                target.put(e.getKey(), e.getValue());
+            } else {
+                combineLocalMaps(targetTs, e.getValue());
             }
         }
-        return result;
     }
 
     /**
@@ -445,21 +433,13 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
     }
 
     /**
-     * Merge two thread-local timestamp→bucket maps into one. Does not mutate either argument
-     * so the combiner is safe when used with parallel stream reduce (identity may be reused).
+     * Combine two thread-local timestamp→bucket maps by merging {@code source} into {@code target} (mutates target).
+     * Used as the combiner in {@code collect()} for parallel stream processing.
      */
-    private Map<Long, A> mergeLocalMaps(Map<Long, A> a, Map<Long, A> b) {
-        if (a.isEmpty()) {
-            return b;
+    private void combineLocalMaps(Map<Long, A> target, Map<Long, A> source) {
+        for (Entry<Long, A> e : source.entrySet()) {
+            target.compute(e.getKey(), (ts, x) -> mergeBuckets(x, e.getValue(), ts));
         }
-        if (b.isEmpty()) {
-            return a;
-        }
-        Map<Long, A> result = new HashMap<>(a);
-        for (Entry<Long, A> e : b.entrySet()) {
-            result.compute(e.getKey(), (ts, x) -> mergeBuckets(x, e.getValue(), ts));
-        }
-        return result;
     }
 
     /**
