@@ -28,7 +28,7 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
     public void testDefaultConfig() {
         ParallelProcessingConfig config = ParallelProcessingConfig.defaultConfig();
 
-        assertTrue("Default config should be enabled", config.enabled());
+        assertFalse("Default config should be disabled (matches setting default)", config.enabled());
         assertEquals("Default total work threshold should be 10000", 10_000L, config.totalWorkThreshold());
     }
 
@@ -39,7 +39,7 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
         ParallelProcessingConfig config = ParallelProcessingConfig.sequentialOnly();
 
         assertFalse("Sequential-only config should be disabled", config.enabled());
-        assertFalse("Disabled config should not use parallel", config.shouldUseParallelProcessing(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        assertFalse("Disabled config should not use parallel", config.shouldUseParallelProcessing(Long.MAX_VALUE));
     }
 
     /**
@@ -50,36 +50,29 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
 
         assertTrue("Always-parallel config should be enabled", config.enabled());
         assertEquals("Total work threshold should be 0", 0L, config.totalWorkThreshold());
-        assertTrue("Should use parallel even with minimal data", config.shouldUseParallelProcessing(1, 1));
+        assertTrue("Should use parallel even with minimal data", config.shouldUseParallelProcessing(1));
     }
 
     /**
-     * Test threshold logic - total work (series x samples) must meet threshold.
+     * Test threshold logic - totalSamples must meet threshold.
      */
     public void testThresholdLogic() {
         ParallelProcessingConfig config = new ParallelProcessingConfig(true, 10_000L);
 
-        // Below threshold: 50 * 100 = 5,000 < 10,000
-        assertFalse("Should not use parallel when total work below threshold", config.shouldUseParallelProcessing(50, 100));
+        // Below threshold
+        assertFalse("Should not use parallel when below threshold", config.shouldUseParallelProcessing(5_000));
 
-        // At threshold: 100 * 100 = 10,000 >= 10,000
-        assertTrue("Should use parallel at exactly threshold", config.shouldUseParallelProcessing(100, 100));
+        // At threshold
+        assertTrue("Should use parallel at exactly threshold", config.shouldUseParallelProcessing(10_000));
 
-        // Above threshold: 200 * 100 = 20,000 > 10,000
-        assertTrue("Should use parallel when above threshold", config.shouldUseParallelProcessing(200, 100));
+        // Above threshold
+        assertTrue("Should use parallel when above threshold", config.shouldUseParallelProcessing(20_000));
 
-        // Many series, few samples: 1000 * 10 = 10,000
-        assertTrue("Should use parallel with many series few samples", config.shouldUseParallelProcessing(1000, 10));
-
-        // Few series, many samples: 10 * 1000 = 10,000
-        assertTrue("Should use parallel with few series many samples", config.shouldUseParallelProcessing(10, 1000));
-
-        // Edge cases: zero
-        assertFalse(config.shouldUseParallelProcessing(0, 0));
-        assertFalse(config.shouldUseParallelProcessing(0, 1000));
+        // Edge case: zero
+        assertFalse(config.shouldUseParallelProcessing(0));
 
         // Large values
-        assertTrue(config.shouldUseParallelProcessing(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        assertTrue(config.shouldUseParallelProcessing(Long.MAX_VALUE));
     }
 
     /**

@@ -180,32 +180,26 @@ public record ParallelProcessingConfig(boolean enabled, long totalWorkThreshold)
     }
 
     /**
-     * Determine if parallel processing should be used for the given dataset in a grouping stage.
-     * Uses total work (series x samples) as the decision criterion, since the actual computational
-     * cost is proportional to the product of series count and samples per series.
+     * Determine if parallel processing should be used for the given total work.
+     * Total work is the sum of all samples across all series, which directly represents
+     * the computational cost of aggregation.
      *
-     * @param seriesCount number of time series to process
-     * @param avgSamplesPerSeries average number of samples per series
+     * @param totalSamples total number of samples across all series
      * @return true if parallel processing should be used
      */
-    public boolean shouldUseParallelProcessing(int seriesCount, int avgSamplesPerSeries) {
-        if (!enabled || seriesCount == 0) {
-            return false;
-        }
-
-        long totalWork = (long) seriesCount * avgSamplesPerSeries;
-        return totalWork >= totalWorkThreshold;
+    public boolean shouldUseParallelProcessing(long totalSamples) {
+        return enabled && totalSamples >= totalWorkThreshold;
     }
 
     /**
-     * Default configuration for when settings are not available.
-     * Uses a conservative total work threshold determined by JMH benchmarks showing
-     * parallel processing wins at all tested data points >= 10,000 total work.
+     * Default configuration used before cluster settings are initialized.
+     * Parallel processing is disabled by default (matches the cluster setting default) to ensure
+     * no parallel work runs before the dedicated pool is created in {@link #initialize}.
      *
-     * @return default configuration
+     * @return default configuration with parallelism disabled
      */
     public static ParallelProcessingConfig defaultConfig() {
-        return new ParallelProcessingConfig(true, 10_000L);
+        return new ParallelProcessingConfig(false, 10_000L);
     }
 
     /**

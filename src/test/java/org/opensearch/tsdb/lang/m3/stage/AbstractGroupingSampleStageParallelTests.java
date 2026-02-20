@@ -249,17 +249,17 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
     public void testConfigThresholdsAreRespected() {
         ParallelProcessingConfig config = new ParallelProcessingConfig(true, 10_000L);
 
-        // Below threshold: 50 * 30 = 1,500 < 10,000
-        assertFalse(config.shouldUseParallelProcessing(50, 30));
+        // Below threshold: 1,500 < 10,000
+        assertFalse(config.shouldUseParallelProcessing(1_500));
 
-        // Below threshold: 200 * 30 = 6,000 < 10,000
-        assertFalse(config.shouldUseParallelProcessing(200, 30));
+        // Below threshold: 6,000 < 10,000
+        assertFalse(config.shouldUseParallelProcessing(6_000));
 
-        // At threshold: 100 * 100 = 10,000 >= 10,000
-        assertTrue(config.shouldUseParallelProcessing(100, 100));
+        // At threshold: 10,000 >= 10,000
+        assertTrue(config.shouldUseParallelProcessing(10_000));
 
-        // Above threshold: 200 * 100 = 20,000 > 10,000
-        assertTrue(config.shouldUseParallelProcessing(200, 100));
+        // Above threshold: 20,000 > 10,000
+        assertTrue(config.shouldUseParallelProcessing(20_000));
     }
 
     /**
@@ -269,7 +269,7 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
         ParallelProcessingConfig config = new ParallelProcessingConfig(false, 0L);
 
         // Even with threshold at 0, disabled should prevent parallel
-        assertFalse(config.shouldUseParallelProcessing(1000, 1000));
+        assertFalse(config.shouldUseParallelProcessing(1_000_000));
     }
 
     /**
@@ -369,7 +369,7 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
         // Reset and verify
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.defaultConfig());
         retrieved = AbstractGroupingSampleStage.getParallelConfig();
-        assertTrue(retrieved.enabled());
+        assertFalse(retrieved.enabled());
         assertEquals(10_000L, retrieved.totalWorkThreshold());
     }
 

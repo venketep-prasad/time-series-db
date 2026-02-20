@@ -138,31 +138,29 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
             throw new IllegalArgumentException("groupSeries must not be empty");
         }
         TimeSeries firstSeries = groupSeries.get(0);
-        int seriesCount = groupSeries.size();
 
-        int totalSamples = 0;
+        long totalSamples = 0;
         for (TimeSeries series : groupSeries) {
             totalSamples += series.getSamples().size();
         }
-        int avgSamplesPerSeries = totalSamples / seriesCount;
 
         // Determine if parallel processing should be used
-        boolean useParallel = parallelConfig.shouldUseParallelProcessing(seriesCount, avgSamplesPerSeries);
+        boolean useParallel = parallelConfig.shouldUseParallelProcessing(totalSamples);
 
         if (useParallel) {
             logger.debug(
-                "Using parallel processing for stage={}, seriesCount={}, avgSamplesPerSeries={}",
+                "Using parallel processing for stage={}, seriesCount={}, totalSamples={}",
                 getName(),
-                seriesCount,
-                avgSamplesPerSeries
+                groupSeries.size(),
+                totalSamples
             );
             return processGroupParallel(groupSeries, groupLabels, firstSeries);
         } else {
             logger.debug(
-                "Using sequential processing for stage={}, seriesCount={}, avgSamplesPerSeries={}",
+                "Using sequential processing for stage={}, seriesCount={}, totalSamples={}",
                 getName(),
-                seriesCount,
-                avgSamplesPerSeries
+                groupSeries.size(),
+                totalSamples
             );
             return processGroupSequential(groupSeries, groupLabels, firstSeries);
         }
@@ -276,34 +274,20 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         TimeSeries firstTimeSeries,
         boolean isFinalReduce
     ) {
-        // Calculate total series count to determine if parallel processing should be used
-        int totalSeriesCount = 0;
-        int totalSamples = 0;
+        long totalSamples = 0;
         for (TimeSeriesProvider agg : aggregations) {
             for (TimeSeries ts : agg.getTimeSeries()) {
-                totalSeriesCount++;
                 totalSamples += ts.getSamples().size();
             }
         }
-        int avgSamplesPerSeries = (totalSeriesCount == 0) ? 0 : (totalSamples / totalSeriesCount);
 
-        boolean useParallel = parallelConfig.shouldUseParallelProcessing(totalSeriesCount, avgSamplesPerSeries);
+        boolean useParallel = parallelConfig.shouldUseParallelProcessing(totalSamples);
 
         if (useParallel) {
-            logger.debug(
-                "Using parallel reduce for stage={}, totalSeries={}, avgSamples={}",
-                getName(),
-                totalSeriesCount,
-                avgSamplesPerSeries
-            );
+            logger.debug("Using parallel reduce for stage={}, totalSamples={}", getName(), totalSamples);
             return reduceGroupedParallel(aggregations, firstAgg, firstTimeSeries, isFinalReduce);
         } else {
-            logger.debug(
-                "Using sequential reduce for stage={}, totalSeries={}, avgSamples={}",
-                getName(),
-                totalSeriesCount,
-                avgSamplesPerSeries
-            );
+            logger.debug("Using sequential reduce for stage={}, totalSamples={}", getName(), totalSamples);
             return reduceGroupedSequential(aggregations, firstAgg, firstTimeSeries, isFinalReduce);
         }
     }
