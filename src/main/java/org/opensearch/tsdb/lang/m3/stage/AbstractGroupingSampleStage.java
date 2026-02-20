@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ForkJoinPool;
 
 /**
  * Abstract base class for pipeline stages that support label grouping and calculation for each Sample.
@@ -37,12 +38,13 @@ import java.util.Map.Entry;
  *
  * <p>This implementation supports both sequential and parallel processing modes:</p>
  * <ul>
- *   <li><strong>Sequential:</strong> Used for small datasets (&lt; 1000 series) to avoid thread overhead</li>
+ *   <li><strong>Sequential:</strong> Used for small datasets where thread overhead is not justified</li>
  *   <li><strong>Parallel:</strong> Used for large datasets to leverage multi-core CPUs at coordinator level</li>
  * </ul>
  *
- * <p>Parallel processing uses thread-local aggregation then merges
- * results, with work executed via {@link java.util.concurrent.ForkJoinPool} common pool.</p>
+ * <p>Parallel processing uses a dedicated {@link ForkJoinPool} (not the JVM-wide common pool)
+ * with bounded parallelism, and thread-local aggregation to avoid lock contention.
+ * See {@link ParallelProcessingConfig} for pool and threshold configuration.</p>
  */
 public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingStage {
 
@@ -218,14 +220,15 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
     }
 
     /**
-     * Process a group of time series in parallel using ForkJoinPool.
+     * Process a group of time series in parallel using a dedicated ForkJoinPool.
      * Used for large datasets to leverage multi-core CPUs.
      *
      * <p>Implementation notes:</p>
      * <ul>
      *   <li>Each thread aggregates a subset of series into a local map (no lock contention)</li>
-     *   <li>Local maps are then reduced by merging buckets per timestamp via {@link #mergeBuckets}</li>
-     *   <li>Uses parallel streams backed by {@link java.util.concurrent.ForkJoinPool#commonPool()}</li>
+     *   <li>Local maps are then combined by merging buckets per timestamp via {@link #mergeBuckets}</li>
+     *   <li>Uses a dedicated {@link ForkJoinPool} with bounded parallelism to avoid contention
+     *       with OpenSearch core and other plugins on the JVM-wide common pool</li>
      * </ul>
      *
      * @param groupSeries List of time series in the same group
@@ -237,14 +240,16 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         long timeRange = firstSeries.getMaxTimestamp() - firstSeries.getMinTimestamp();
         int expectedTimestamps = (int) (timeRange / firstSeries.getStep()) + 1;
 
-        // Each thread accumulates into a thread-local map via collect (avoids per-key contention
-        // and unnecessary HashMap copying that reduce() would cause)
-        Map<Long, A> timestampToAggregated = groupSeries.parallelStream()
-            .collect(
-                () -> HashMap.newHashMap(expectedTimestamps),
-                (map, series) -> aggregateSamplesIntoMap(series.getSamples(), map),
-                this::combineLocalMaps
-            );
+        // Submit to dedicated pool to avoid contention with ForkJoinPool.commonPool()
+        ForkJoinPool pool = ParallelProcessingConfig.getPool();
+        Map<Long, A> timestampToAggregated = pool.submit(
+            () -> groupSeries.parallelStream()
+                .collect(
+                    () -> HashMap.newHashMap(expectedTimestamps),
+                    (map, series) -> aggregateSamplesIntoMap(series.getSamples(), map),
+                    this::combineLocalMaps
+                )
+        ).join();
 
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
@@ -333,7 +338,7 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
      * Parallel reduce implementation using thread-local aggregation then merge (same pattern as
      * {@link #processGroupParallel}). Uses {@code collect()} so each thread accumulates into its own
      * mutable map, then partial results are combined via {@link #combineGroupMaps}.
-     * Avoids per-key contention by not sharing maps across threads.
+     * Runs on a dedicated {@link ForkJoinPool} to avoid contention with the JVM-wide common pool.
      */
     private InternalAggregation reduceGroupedParallel(
         List<TimeSeriesProvider> aggregations,
@@ -341,13 +346,17 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         TimeSeries firstTimeSeries,
         boolean isFinalReduce
     ) {
-        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = aggregations.parallelStream().collect(HashMap::new, (local, aggregation) -> {
-            for (TimeSeries series : aggregation.getTimeSeries()) {
-                ByteLabels groupLabels = extractGroupLabelsDirect(series);
-                Map<Long, A> timestampToBucket = local.computeIfAbsent(groupLabels, k -> new HashMap<>());
-                aggregateSamplesIntoMap(series.getSamples(), timestampToBucket);
-            }
-        }, this::combineGroupMaps);
+        // Submit to dedicated pool to avoid contention with ForkJoinPool.commonPool()
+        ForkJoinPool pool = ParallelProcessingConfig.getPool();
+        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = pool.submit(
+            () -> aggregations.parallelStream().collect(HashMap::new, (local, aggregation) -> {
+                for (TimeSeries series : aggregation.getTimeSeries()) {
+                    ByteLabels groupLabels = extractGroupLabelsDirect(series);
+                    Map<Long, A> timestampToBucket = local.computeIfAbsent(groupLabels, k -> new HashMap<>());
+                    aggregateSamplesIntoMap(series.getSamples(), timestampToBucket);
+                }
+            }, this::combineGroupMaps)
+        ).join();
 
         return finalizeReduction(groupToTimestampBucket, firstAgg, firstTimeSeries, isFinalReduce);
     }

@@ -599,6 +599,23 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
     );
 
     /**
+     * Size of the dedicated ForkJoinPool used for parallel grouping stage processing.
+     * A dedicated pool is used instead of the JVM-wide {@code ForkJoinPool.commonPool()} to prevent
+     * TSDB parallel queries from competing with OpenSearch core and other plugins for shared threads.
+     * Multiple concurrent queries share this pool, so the bounded size prevents over-subscribing
+     * CPU cores.
+     *
+     * <p>Default: half of available processors (minimum 1)</p>
+     */
+    public static final Setting<Integer> GROUPING_STAGE_PARALLEL_POOL_SIZE = Setting.intSetting(
+        "tsdb_engine.query.grouping_stage.parallel_processing.pool_size",
+        Math.max(1, Runtime.getRuntime().availableProcessors() / 2),
+        1, // min
+        Setting.Property.NodeScope,
+        Setting.Property.Dynamic
+    );
+
+    /**
      * Default constructor
      */
     public TSDBPlugin() {}
@@ -690,7 +707,8 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
             TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_TTL,
             TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_MAX_SIZE,
             GROUPING_STAGE_PARALLEL_ENABLED,
-            GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD
+            GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD,
+            GROUPING_STAGE_PARALLEL_POOL_SIZE
         );
     }
 
@@ -888,6 +906,9 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
     @Override
     public void close() {
         logger.info("Shutting down TSDBPlugin and clearing global caches");
+
+        // Shut down the dedicated parallel processing pool
+        ParallelProcessingConfig.shutdown();
 
         // Clear the static cache to prevent stale entries across plugin reloads
         RemoteIndexSettingsCache.clearGlobalCache();

@@ -81,7 +81,7 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         List<Setting<?>> settings = plugin.getSettings();
 
         assertNotNull("Settings list should not be null", settings);
-        assertThat("Should have 25 settings", settings, hasSize(25));
+        assertThat("Should have 26 settings", settings, hasSize(26));
 
         // Verify TSDB_ENGINE_ENABLED is present
         assertTrue("Should contain TSDB_ENGINE_ENABLED setting", settings.contains(TSDBPlugin.TSDB_ENGINE_ENABLED));
@@ -150,6 +150,10 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         assertTrue(
             "Should contain GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD setting for grouping stages",
             settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD)
+        );
+        assertTrue(
+            "Should contain GROUPING_STAGE_PARALLEL_POOL_SIZE setting for grouping stages",
+            settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE)
         );
     }
 
@@ -386,6 +390,7 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         allSettings.add(TSDBPlugin.TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_MAX_SIZE);
         allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED);
         allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD);
+        allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE);
 
         ClusterSettings mockClusterSettings = new ClusterSettings(Settings.EMPTY, allSettings);
         when(mockClusterService.getClusterSettings()).thenReturn(mockClusterSettings);

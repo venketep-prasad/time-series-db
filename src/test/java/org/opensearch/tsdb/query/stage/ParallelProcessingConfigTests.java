@@ -15,6 +15,7 @@ import org.opensearch.tsdb.lang.m3.stage.AbstractGroupingSampleStage;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ForkJoinPool;
 
 /**
  * Tests for ParallelProcessingConfig.
@@ -122,6 +123,7 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
         Set<org.opensearch.common.settings.Setting<?>> settingsSet = new HashSet<>();
         settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED);
         settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD);
+        settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE);
 
         ClusterSettings clusterSettings = new ClusterSettings(initialSettings, settingsSet);
 
@@ -165,5 +167,65 @@ public class ParallelProcessingConfigTests extends OpenSearchTestCase {
 
         // Reset
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.defaultConfig());
+        ParallelProcessingConfig.shutdown();
+    }
+
+    /**
+     * Test that getPool() returns a non-null pool after initialization.
+     */
+    public void testGetPoolReturnsNonNull() {
+        // Before initialization, should fall back to commonPool
+        ParallelProcessingConfig.shutdown();
+        ForkJoinPool pool = ParallelProcessingConfig.getPool();
+        assertNotNull("getPool() should never return null", pool);
+        assertEquals("Should fall back to commonPool", ForkJoinPool.commonPool(), pool);
+    }
+
+    /**
+     * Test that getPool() returns the dedicated pool after initialization.
+     */
+    public void testGetPoolReturnsDedicatedPoolAfterInit() {
+        Settings settings = Settings.builder()
+            .put("tsdb_engine.query.grouping_stage.parallel_processing.enabled", true)
+            .put("tsdb_engine.query.grouping_stage.parallel_processing.total_work_threshold", 10000)
+            .put("tsdb_engine.query.grouping_stage.parallel_processing.pool_size", 2)
+            .build();
+
+        Set<org.opensearch.common.settings.Setting<?>> settingsSet = new HashSet<>();
+        settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED);
+        settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD);
+        settingsSet.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE);
+
+        ClusterSettings clusterSettings = new ClusterSettings(settings, settingsSet);
+        ParallelProcessingConfig.initialize(clusterSettings, settings);
+
+        ForkJoinPool pool = ParallelProcessingConfig.getPool();
+        assertNotNull(pool);
+        assertNotSame("Should not be commonPool", ForkJoinPool.commonPool(), pool);
+        assertEquals("Pool parallelism should be 2", 2, pool.getParallelism());
+
+        ParallelProcessingConfig.shutdown();
+        AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.defaultConfig());
+    }
+
+    /**
+     * Test that pool size setting has correct properties.
+     */
+    public void testPoolSizeSettingProperties() {
+        assertTrue("Pool size setting should be dynamic", TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE.isDynamic());
+        int defaultPoolSize = TSDBPlugin.GROUPING_STAGE_PARALLEL_POOL_SIZE.getDefault(Settings.EMPTY);
+        assertTrue("Default pool size should be >= 1", defaultPoolSize >= 1);
+        assertTrue("Default pool size should be <= available processors", defaultPoolSize <= Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * Test that shutdown is idempotent (calling twice is safe).
+     */
+    public void testShutdownIdempotent() {
+        ParallelProcessingConfig.shutdown();
+        ParallelProcessingConfig.shutdown(); // should not throw
+
+        // After shutdown, getPool falls back to commonPool
+        assertEquals(ForkJoinPool.commonPool(), ParallelProcessingConfig.getPool());
     }
 }
