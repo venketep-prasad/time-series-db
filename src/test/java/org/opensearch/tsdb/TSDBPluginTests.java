@@ -81,7 +81,7 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         List<Setting<?>> settings = plugin.getSettings();
 
         assertNotNull("Settings list should not be null", settings);
-        assertThat("Should have 26 settings", settings, hasSize(26));
+        assertThat("Should have 25 settings", settings, hasSize(25));
 
         // Verify TSDB_ENGINE_ENABLED is present
         assertTrue("Should contain TSDB_ENGINE_ENABLED setting", settings.contains(TSDBPlugin.TSDB_ENGINE_ENABLED));
@@ -148,12 +148,8 @@ public class TSDBPluginTests extends OpenSearchTestCase {
             settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED)
         );
         assertTrue(
-            "Should contain GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD setting for grouping stages",
-            settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD)
-        );
-        assertTrue(
-            "Should contain GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD setting for grouping stages",
-            settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD)
+            "Should contain GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD setting for grouping stages",
+            settings.contains(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD)
         );
     }
 
@@ -389,8 +385,7 @@ public class TSDBPluginTests extends OpenSearchTestCase {
         allSettings.add(TSDBPlugin.TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_TTL);
         allSettings.add(TSDBPlugin.TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_MAX_SIZE);
         allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED);
-        allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD);
-        allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD);
+        allSettings.add(TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD);
 
         ClusterSettings mockClusterSettings = new ClusterSettings(Settings.EMPTY, allSettings);
         when(mockClusterService.getClusterSettings()).thenReturn(mockClusterSettings);

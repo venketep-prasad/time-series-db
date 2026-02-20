@@ -583,35 +583,17 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
     );
 
     /**
-     * Minimum number of time series to trigger parallel processing within a grouping stage.
-     * Below this threshold, sequential processing is used to avoid thread overhead.
-     * Both this and {@link #GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD} must be met for parallel
-     * processing to activate, ensuring sufficient total work (series x samples) to justify
-     * the thread coordination overhead.
+     * Minimum total work (seriesCount x avgSamplesPerSeries) to trigger parallel processing
+     * in grouping stages. Below this threshold, sequential processing is used to avoid thread
+     * overhead. JMH benchmarks show parallel processing yields speedups at all tested data
+     * points with total work >= 10,000, ranging from ~1.2x at 10K to 7-8x at 1M+.
      *
-     * <p>Default: 1000 series</p>
+     * <p>Default: 10000 (series x samples)</p>
      */
-    public static final Setting<Integer> GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD = Setting.intSetting(
-        "tsdb_engine.query.grouping_stage.parallel_processing.series_threshold",
-        1000, // default
-        0, // min (0 = always parallel when enabled)
-        Setting.Property.NodeScope,
-        Setting.Property.Dynamic
-    );
-
-    /**
-     * Minimum average number of samples per series to trigger parallel processing in grouping stages.
-     * This prevents parallelizing sparse time series where overhead may dominate.
-     * Both this and {@link #GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD} must be met for parallel
-     * processing to activate, ensuring sufficient total work (series x samples) to justify
-     * the thread coordination overhead.
-     *
-     * <p>Default: 100 samples</p>
-     */
-    public static final Setting<Integer> GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD = Setting.intSetting(
-        "tsdb_engine.query.grouping_stage.parallel_processing.samples_threshold",
-        100, // default
-        0, // min
+    public static final Setting<Long> GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD = Setting.longSetting(
+        "tsdb_engine.query.grouping_stage.parallel_processing.total_work_threshold",
+        10_000L, // default: benchmark-validated crossover point
+        0L, // min (0 = always parallel when enabled)
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
@@ -708,8 +690,7 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
             TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_TTL,
             TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_MAX_SIZE,
             GROUPING_STAGE_PARALLEL_ENABLED,
-            GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD,
-            GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD
+            GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD
         );
     }
 

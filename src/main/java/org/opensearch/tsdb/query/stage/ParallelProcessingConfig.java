@@ -40,23 +40,21 @@ import org.opensearch.tsdb.lang.m3.stage.AbstractGroupingSampleStage;
  * <p>Settings are defined in {@link TSDBPlugin}:</p>
  * <ul>
  *   <li>{@link TSDBPlugin#GROUPING_STAGE_PARALLEL_ENABLED}</li>
- *   <li>{@link TSDBPlugin#GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD}</li>
- *   <li>{@link TSDBPlugin#GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD}</li>
+ *   <li>{@link TSDBPlugin#GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD}</li>
  * </ul>
  *
  * <h2>Performance:</h2>
- * <p>Parallel reduce can help when the coordinator merges many shards and total series/samples
- * exceed thresholds. Benefit is limited by shard count (max parallelism) and can be reduced
- * by contention when many series fall into few groups. Small reduces stay sequential to avoid
- * overhead.</p>
+ * <p>JMH benchmarks show parallel processing wins at all tested data points (series x samples &gt;= 10,000),
+ * with speedups ranging from 1.2x at 10K total work to 7-8x at 1M+ total work. The total work threshold
+ * ({@code seriesCount * avgSamplesPerSeries}) is used instead of separate series/samples thresholds because
+ * the actual cost is proportional to the product, not to each dimension independently.</p>
  *
  * @param enabled whether parallel processing is enabled
- * @param seriesThreshold minimum series count for parallel processing
- * @param samplesThreshold minimum samples per series for parallel processing
+ * @param totalWorkThreshold minimum total work (series x samples) for parallel processing
  * @see AbstractGroupingSampleStage
  * @see TSDBPlugin
  */
-public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int samplesThreshold) {
+public record ParallelProcessingConfig(boolean enabled, long totalWorkThreshold) {
 
     private static final Logger logger = LogManager.getLogger(ParallelProcessingConfig.class);
 
@@ -78,27 +76,20 @@ public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int
         // Initialize with current settings
         ParallelProcessingConfig initialConfig = new ParallelProcessingConfig(
             TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED.get(settings),
-            TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD.get(settings),
-            TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD.get(settings)
+            TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD.get(settings)
         );
         AbstractGroupingSampleStage.setParallelConfig(initialConfig);
         logger.info(
-            "Initialized parallel processing config: enabled={}, seriesThreshold={}, samplesThreshold={}",
+            "Initialized parallel processing config: enabled={}, totalWorkThreshold={}",
             initialConfig.enabled(),
-            initialConfig.seriesThreshold(),
-            initialConfig.samplesThreshold()
+            initialConfig.totalWorkThreshold()
         );
 
-        // Register listeners for each setting - each listener updates only the changed field
-        // while preserving the other values from the current config
+        // Register listeners for each setting
         clusterSettings.addSettingsUpdateConsumer(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED, ParallelProcessingConfig::updateEnabled);
         clusterSettings.addSettingsUpdateConsumer(
-            TSDBPlugin.GROUPING_STAGE_PARALLEL_SERIES_THRESHOLD,
-            ParallelProcessingConfig::updateSeriesThreshold
-        );
-        clusterSettings.addSettingsUpdateConsumer(
-            TSDBPlugin.GROUPING_STAGE_PARALLEL_SAMPLES_THRESHOLD,
-            ParallelProcessingConfig::updateSamplesThreshold
+            TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD,
+            ParallelProcessingConfig::updateTotalWorkThreshold
         );
     }
 
@@ -108,39 +99,26 @@ public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int
      */
     static void updateEnabled(boolean newEnabled) {
         ParallelProcessingConfig current = AbstractGroupingSampleStage.getParallelConfig();
-        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(
-            newEnabled,
-            current.seriesThreshold(),
-            current.samplesThreshold()
-        );
+        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(newEnabled, current.totalWorkThreshold());
         AbstractGroupingSampleStage.setParallelConfig(newConfig);
         logger.info("Updated parallel processing config: enabled={}", newEnabled);
     }
 
     /**
-     * Update the series threshold setting while preserving other values.
+     * Update the total work threshold setting while preserving other values.
      * Package-private for testing.
      */
-    static void updateSeriesThreshold(int newThreshold) {
+    static void updateTotalWorkThreshold(long newThreshold) {
         ParallelProcessingConfig current = AbstractGroupingSampleStage.getParallelConfig();
-        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(current.enabled(), newThreshold, current.samplesThreshold());
+        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(current.enabled(), newThreshold);
         AbstractGroupingSampleStage.setParallelConfig(newConfig);
-        logger.info("Updated parallel processing config: seriesThreshold={}", newThreshold);
-    }
-
-    /**
-     * Update the samples threshold setting while preserving other values.
-     * Package-private for testing.
-     */
-    static void updateSamplesThreshold(int newThreshold) {
-        ParallelProcessingConfig current = AbstractGroupingSampleStage.getParallelConfig();
-        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(current.enabled(), current.seriesThreshold(), newThreshold);
-        AbstractGroupingSampleStage.setParallelConfig(newConfig);
-        logger.info("Updated parallel processing config: samplesThreshold={}", newThreshold);
+        logger.info("Updated parallel processing config: totalWorkThreshold={}", newThreshold);
     }
 
     /**
      * Determine if parallel processing should be used for the given dataset in a grouping stage.
+     * Uses total work (series x samples) as the decision criterion, since the actual computational
+     * cost is proportional to the product of series count and samples per series.
      *
      * @param seriesCount number of time series to process
      * @param avgSamplesPerSeries average number of samples per series
@@ -151,22 +129,19 @@ public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int
             return false;
         }
 
-        // Check both thresholds - need sufficient data volume for parallelism to be beneficial
-        return seriesCount >= seriesThreshold && avgSamplesPerSeries >= samplesThreshold;
+        long totalWork = (long) seriesCount * avgSamplesPerSeries;
+        return totalWork >= totalWorkThreshold;
     }
 
     /**
      * Default configuration for when settings are not available.
-     * Uses conservative thresholds suitable for most workloads.
+     * Uses a conservative total work threshold determined by JMH benchmarks showing
+     * parallel processing wins at all tested data points >= 10,000 total work.
      *
      * @return default configuration
      */
     public static ParallelProcessingConfig defaultConfig() {
-        return new ParallelProcessingConfig(
-            true,  // parallel processing enabled
-            1000,  // series threshold
-            100    // samples threshold
-        );
+        return new ParallelProcessingConfig(true, 10_000L);
     }
 
     /**
@@ -176,7 +151,7 @@ public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int
      * @return sequential-only configuration
      */
     public static ParallelProcessingConfig sequentialOnly() {
-        return new ParallelProcessingConfig(false, Integer.MAX_VALUE, Integer.MAX_VALUE);
+        return new ParallelProcessingConfig(false, Long.MAX_VALUE);
     }
 
     /**
@@ -186,6 +161,6 @@ public record ParallelProcessingConfig(boolean enabled, int seriesThreshold, int
      * @return always-parallel configuration
      */
     public static ParallelProcessingConfig alwaysParallel() {
-        return new ParallelProcessingConfig(true, 0, 0);
+        return new ParallelProcessingConfig(true, 0L);
     }
 }
