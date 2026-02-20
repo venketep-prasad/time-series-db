@@ -144,8 +144,12 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
             totalSamples += series.getSamples().size();
         }
 
-        // Determine if parallel processing should be used
-        boolean useParallel = parallelConfig.shouldUseParallelProcessing(totalSamples);
+        // Determine if parallel processing should be used.
+        // parallelStream splits work over stream elements (series), so we need at least as many
+        // series as the pool's parallelism level to keep all threads busy. With fewer elements
+        // than threads, the overhead of task splitting and joining outweighs any benefit.
+        int minElements = ParallelProcessingConfig.getPool().getParallelism();
+        boolean useParallel = groupSeries.size() >= minElements && parallelConfig.shouldUseParallelProcessing(totalSamples);
 
         if (useParallel) {
             logger.debug(
@@ -281,7 +285,9 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
             }
         }
 
-        boolean useParallel = parallelConfig.shouldUseParallelProcessing(totalSamples);
+        // Need at least as many aggregation providers as pool threads for meaningful parallelism
+        int minElements = ParallelProcessingConfig.getPool().getParallelism();
+        boolean useParallel = aggregations.size() >= minElements && parallelConfig.shouldUseParallelProcessing(totalSamples);
 
         if (useParallel) {
             logger.debug("Using parallel reduce for stage={}, totalSamples={}", getName(), totalSamples);
