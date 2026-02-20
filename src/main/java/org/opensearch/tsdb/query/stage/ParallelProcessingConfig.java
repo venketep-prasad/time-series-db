@@ -85,34 +85,24 @@ public record ParallelProcessingConfig(boolean enabled, long totalWorkThreshold)
             initialConfig.totalWorkThreshold()
         );
 
-        // Register listeners for each setting
-        clusterSettings.addSettingsUpdateConsumer(TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED, ParallelProcessingConfig::updateEnabled);
+        // Register a single compound listener for both settings to ensure atomic updates.
+        // This prevents a TOCTOU race where concurrent updates to enabled and totalWorkThreshold
+        // could overwrite each other if handled by separate listeners.
         clusterSettings.addSettingsUpdateConsumer(
+            TSDBPlugin.GROUPING_STAGE_PARALLEL_ENABLED,
             TSDBPlugin.GROUPING_STAGE_PARALLEL_TOTAL_WORK_THRESHOLD,
-            ParallelProcessingConfig::updateTotalWorkThreshold
+            ParallelProcessingConfig::updateConfig
         );
     }
 
     /**
-     * Update the enabled setting while preserving other values.
+     * Atomically update both settings at once, avoiding race conditions between separate listeners.
      * Package-private for testing.
      */
-    static void updateEnabled(boolean newEnabled) {
-        ParallelProcessingConfig current = AbstractGroupingSampleStage.getParallelConfig();
-        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(newEnabled, current.totalWorkThreshold());
+    static void updateConfig(boolean newEnabled, long newTotalWorkThreshold) {
+        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(newEnabled, newTotalWorkThreshold);
         AbstractGroupingSampleStage.setParallelConfig(newConfig);
-        logger.info("Updated parallel processing config: enabled={}", newEnabled);
-    }
-
-    /**
-     * Update the total work threshold setting while preserving other values.
-     * Package-private for testing.
-     */
-    static void updateTotalWorkThreshold(long newThreshold) {
-        ParallelProcessingConfig current = AbstractGroupingSampleStage.getParallelConfig();
-        ParallelProcessingConfig newConfig = new ParallelProcessingConfig(current.enabled(), newThreshold);
-        AbstractGroupingSampleStage.setParallelConfig(newConfig);
-        logger.info("Updated parallel processing config: totalWorkThreshold={}", newThreshold);
+        logger.info("Updated parallel processing config: enabled={}, totalWorkThreshold={}", newEnabled, newTotalWorkThreshold);
     }
 
     /**
