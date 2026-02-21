@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Abstract base class for pipeline stages that support label grouping and calculation for each Sample.
@@ -242,16 +243,25 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         long timeRange = firstSeries.getMaxTimestamp() - firstSeries.getMinTimestamp();
         int expectedTimestamps = (int) (timeRange / firstSeries.getStep()) + 1;
 
-        // Submit to dedicated pool to avoid contention with ForkJoinPool.commonPool()
+        // Submit to dedicated pool to avoid contention with ForkJoinPool.commonPool().
+        // Catch RejectedExecutionException in case a dynamic pool size update shuts down
+        // the old pool between getPool() and submit() — fall back to sequential rather
+        // than failing the user's query for a configuration change.
         ForkJoinPool pool = ParallelProcessingConfig.getPool();
-        Map<Long, A> timestampToAggregated = pool.submit(
-            () -> groupSeries.parallelStream()
-                .collect(
-                    () -> HashMap.newHashMap(expectedTimestamps),
-                    (map, series) -> aggregateSamplesIntoMap(series.getSamples(), map),
-                    this::combineLocalMaps
-                )
-        ).join();
+        Map<Long, A> timestampToAggregated;
+        try {
+            timestampToAggregated = pool.submit(
+                () -> groupSeries.parallelStream()
+                    .collect(
+                        () -> HashMap.newHashMap(expectedTimestamps),
+                        (map, series) -> aggregateSamplesIntoMap(series.getSamples(), map),
+                        this::combineLocalMaps
+                    )
+            ).join();
+        } catch (RejectedExecutionException e) {
+            logger.warn("Parallel pool rejected task (likely resizing), falling back to sequential", e);
+            return processGroupSequential(groupSeries, groupLabels, firstSeries);
+        }
 
         // Create sorted samples - pre-allocate since we know the exact size
         List<Sample> aggregatedSamples = new ArrayList<>(timestampToAggregated.size());
@@ -336,17 +346,20 @@ public abstract class AbstractGroupingSampleStage<A> extends AbstractGroupingSta
         TimeSeries firstTimeSeries,
         boolean isFinalReduce
     ) {
-        // Submit to dedicated pool to avoid contention with ForkJoinPool.commonPool()
         ForkJoinPool pool = ParallelProcessingConfig.getPool();
-        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket = pool.submit(
-            () -> aggregations.parallelStream().collect(HashMap::new, (local, aggregation) -> {
+        Map<ByteLabels, Map<Long, A>> groupToTimestampBucket;
+        try {
+            groupToTimestampBucket = pool.submit(() -> aggregations.parallelStream().collect(HashMap::new, (local, aggregation) -> {
                 for (TimeSeries series : aggregation.getTimeSeries()) {
                     ByteLabels groupLabels = extractGroupLabelsDirect(series);
                     Map<Long, A> timestampToBucket = local.computeIfAbsent(groupLabels, k -> new HashMap<>());
                     aggregateSamplesIntoMap(series.getSamples(), timestampToBucket);
                 }
-            }, this::combineGroupMaps)
-        ).join();
+            }, this::combineGroupMaps)).join();
+        } catch (RejectedExecutionException e) {
+            logger.warn("Parallel pool rejected task (likely resizing), falling back to sequential", e);
+            return reduceGroupedSequential(aggregations, firstAgg, firstTimeSeries, isFinalReduce);
+        }
 
         return finalizeReduction(groupToTimestampBucket, firstAgg, firstTimeSeries, isFinalReduce);
     }
