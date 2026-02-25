@@ -521,7 +521,7 @@ public class InternalTimeSeriesTests extends OpenSearchTestCase {
         PipelineAggregator.PipelineTree emptyTree = new PipelineAggregator.PipelineTree(Collections.emptyMap(), Collections.emptyList());
         InternalAggregation.ReduceContext context = InternalAggregation.ReduceContext.forFinalReduction(null, null, s -> {}, emptyTree);
         IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> agg.reduce(aggregations, context));
-        assertTrue(e.getMessage().contains("is not a TimeSeriesProvider"));
+        assertTrue(e.getMessage().contains("Expected InternalTimeSeries but got"));
     }
 
     public void testReduceMergePathWithNonTimeSeriesProviderThrows() {
@@ -532,7 +532,7 @@ public class InternalTimeSeriesTests extends OpenSearchTestCase {
         PipelineAggregator.PipelineTree emptyTree = new PipelineAggregator.PipelineTree(Collections.emptyMap(), Collections.emptyList());
         InternalAggregation.ReduceContext context = InternalAggregation.ReduceContext.forFinalReduction(null, null, s -> {}, emptyTree);
         IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> agg.reduce(aggregations, context));
-        assertTrue(e.getMessage().contains("is not a TimeSeriesProvider"));
+        assertTrue(e.getMessage().contains("Expected InternalTimeSeries but got"));
     }
 
     public void testGetPropertyMultiplePathElements() {

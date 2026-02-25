@@ -416,10 +416,9 @@ public class ClosedChunkIndexLeafReaderTests extends OpenSearchTestCase {
             ClosedChunkIndexLeafReader leafReader = new ClosedChunkIndexLeafReader(innerReader, LabelStorageType.BINARY);
             TSDBDocValues tsdbDocValues = leafReader.getTSDBDocValues();
 
-            // Doc 2 has no CHUNK field; advanceExact(2) returns false for chunk doc values
-            List<CompressedChunk> chunks = leafReader.rawChunkDataForDoc(2, tsdbDocValues);
-            assertNotNull(chunks);
-            assertTrue(chunks.isEmpty());
+            // Doc 2 has no CHUNK field; advanceExact(2) returns false — should throw IOException
+            IOException exception = expectThrows(IOException.class, () -> leafReader.rawChunkDataForDoc(2, tsdbDocValues));
+            assertTrue(exception.getMessage().contains("not found for document"));
         }
     }
 

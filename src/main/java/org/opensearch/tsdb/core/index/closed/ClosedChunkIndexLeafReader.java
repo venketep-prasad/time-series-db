@@ -104,7 +104,7 @@ public class ClosedChunkIndexLeafReader extends TSDBLeafReader {
 
         BinaryDocValues chunkValues = tsdbDocValues.getChunkDocValues();
         if (!chunkValues.advanceExact(docId)) {
-            return List.of();
+            throw new IOException("Chunk field 'chunk' not found for document in closed chunk index.");
         }
 
         BytesRef chunkBytes = chunkValues.binaryValue();
@@ -121,7 +121,7 @@ public class ClosedChunkIndexLeafReader extends TSDBLeafReader {
     public List<CompressedChunk> rawChunkDataForDoc(int docId, TSDBDocValues tsdbDocValues) throws IOException {
         BinaryDocValues chunkValues = tsdbDocValues.getChunkDocValues();
         if (!chunkValues.advanceExact(docId)) {
-            return List.of();
+            throw new IOException("Chunk field 'chunk' not found for document in closed chunk index.");
         }
 
         BytesRef serializedChunk = chunkValues.binaryValue();

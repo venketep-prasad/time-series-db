@@ -12,7 +12,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.model.Sample;
 import org.opensearch.tsdb.core.model.SampleList;
 import org.opensearch.tsdb.query.utils.SampleMerger;
 
@@ -111,8 +110,8 @@ public class CompressedTimeSeries implements Writeable {
         return chunks.size();
     }
 
-    public List<Sample> decodeAllSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
-        List<List<Sample>> allDecodedSamples = new ArrayList<>(chunks.size());
+    public SampleList decodeAllSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
+        List<SampleList> allDecodedSamples = new ArrayList<>(chunks.size());
         for (CompressedChunk chunk : chunks) {
             if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
                 allDecodedSamples.add(chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp));
@@ -120,13 +119,12 @@ public class CompressedTimeSeries implements Writeable {
         }
 
         if (allDecodedSamples.isEmpty()) {
-            return List.of();
+            return SampleList.fromList(List.of());
         }
 
-        List<Sample> result = allDecodedSamples.get(0);
+        SampleList result = allDecodedSamples.get(0);
         for (int i = 1; i < allDecodedSamples.size(); i++) {
-            SampleList merged = MERGE_HELPER.merge(SampleList.fromList(result), SampleList.fromList(allDecodedSamples.get(i)), true);
-            result = merged.toList();
+            result = MERGE_HELPER.merge(result, allDecodedSamples.get(i), true);
         }
         return result;
     }

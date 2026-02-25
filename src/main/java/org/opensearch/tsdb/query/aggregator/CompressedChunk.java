@@ -13,11 +13,10 @@ import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.tsdb.core.chunk.ChunkIterator;
 import org.opensearch.tsdb.core.chunk.Encoding;
 import org.opensearch.tsdb.core.chunk.XORIterator;
-import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.core.model.SampleList;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -86,13 +85,13 @@ public class CompressedChunk implements Writeable {
         };
     }
 
-    public List<Sample> decodeSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
+    public SampleList decodeSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
         ChunkIterator iterator = getChunkIterator();
         ChunkIterator.DecodeResult decodeResult = iterator.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
         if (iterator.error() != null) {
             throw new IOException("Error decoding samples from compressed chunk", iterator.error());
         }
-        return decodeResult.samples().toList();
+        return decodeResult.samples();
     }
 
     public boolean overlapsTimeRange(long queryMinTimestamp, long queryMaxTimestamp) {

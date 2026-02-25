@@ -310,7 +310,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                 }
                 long overallStep = compressedGroup.get(0).getStep();
                 String alias = compressedGroup.get(0).getAlias();
-                List<List<Sample>> allSamplesToMerge = new ArrayList<>(compressedGroup.size());
+                List<SampleList> allSamplesToMerge = new ArrayList<>(compressedGroup.size());
                 for (CompressedTimeSeries series : compressedGroup) {
                     try {
                         // maxTimestamp+1 because decodeAllSamples uses exclusive upper bound
@@ -319,21 +319,16 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                         throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
                     }
                 }
-                List<Sample> mergedSamples;
+                SampleList mergedSamples;
                 if (allSamplesToMerge.isEmpty()) {
-                    mergedSamples = List.of();
+                    mergedSamples = SampleList.fromList(List.of());
                 } else {
                     mergedSamples = allSamplesToMerge.get(0);
                     for (int i = 1; i < allSamplesToMerge.size(); i++) {
-                        SampleList merged = MERGE_HELPER.merge(
-                            SampleList.fromList(mergedSamples),
-                            SampleList.fromList(allSamplesToMerge.get(i)),
-                            true
-                        );
-                        mergedSamples = merged.toList();
+                        mergedSamples = MERGE_HELPER.merge(mergedSamples, allSamplesToMerge.get(i), true);
                     }
                 }
-                List<Sample> alignedSamples = SampleMerger.alignAndDeduplicate(mergedSamples, overallMinTimestamp, overallStep);
+                List<Sample> alignedSamples = SampleMerger.alignAndDeduplicate(mergedSamples.toList(), overallMinTimestamp, overallStep);
                 decodedTimeSeries.add(new TimeSeries(alignedSamples, labels, overallMinTimestamp, overallMaxTimestamp, overallStep, alias));
             }
             return decodedTimeSeries;
@@ -538,11 +533,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
                     TimeSeries existingSeries = mergedSeriesByLabels.get(seriesLabels);
                     if (existingSeries != null) {
-                        SampleList mergedSamples = MERGE_HELPER.merge(
-                            existingSeries.getSamples(),
-                            series.getSamples(),
-                            true
-                        );
+                        SampleList mergedSamples = MERGE_HELPER.merge(existingSeries.getSamples(), series.getSamples(), true);
 
                         cbConsumer.accept(mergedSamples.ramBytesUsed());
 

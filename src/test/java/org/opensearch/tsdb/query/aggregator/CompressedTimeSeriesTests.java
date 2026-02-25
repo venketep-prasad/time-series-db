@@ -15,7 +15,7 @@ import org.opensearch.tsdb.core.chunk.Encoding;
 import org.opensearch.tsdb.core.chunk.XORChunk;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.core.model.SampleList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -156,8 +156,8 @@ public class CompressedTimeSeriesTests extends OpenSearchTestCase {
 
     public void testDecodeAllSamplesEmptyChunks() throws Exception {
         CompressedTimeSeries series = new CompressedTimeSeries(new ArrayList<>(), ByteLabels.emptyLabels(), 1000L, 2000L, 1000L, null);
-        List<Sample> result = series.decodeAllSamples(1000L, 2000L);
-        assertEquals(List.of(), result);
+        SampleList result = series.decodeAllSamples(1000L, 2000L);
+        assertTrue(result.isEmpty());
     }
 
     public void testDecodeAllSamplesSingleChunk() throws Exception {
@@ -177,12 +177,12 @@ public class CompressedTimeSeriesTests extends OpenSearchTestCase {
             null
         );
 
-        List<Sample> result = series.decodeAllSamples(1000L, 4000L);
+        SampleList result = series.decodeAllSamples(1000L, 4000L);
         assertEquals(3, result.size());
-        assertEquals(1000L, result.get(0).getTimestamp());
-        assertEquals(10.0, result.get(0).getValue(), 0.001);
-        assertEquals(3000L, result.get(2).getTimestamp());
-        assertEquals(30.0, result.get(2).getValue(), 0.001);
+        assertEquals(1000L, result.getTimestamp(0));
+        assertEquals(10.0, result.getValue(0), 0.001);
+        assertEquals(3000L, result.getTimestamp(2));
+        assertEquals(30.0, result.getValue(2), 0.001);
     }
 
     public void testDecodeAllSamplesSkipsNonOverlappingChunks() throws Exception {
@@ -194,8 +194,8 @@ public class CompressedTimeSeriesTests extends OpenSearchTestCase {
         CompressedTimeSeries series = new CompressedTimeSeries(List.of(chunk), ByteLabels.emptyLabels(), 5000L, 6000L, 1000L, null);
 
         // Query range does not overlap chunk
-        List<Sample> result = series.decodeAllSamples(1000L, 2000L);
-        assertEquals(List.of(), result);
+        SampleList result = series.decodeAllSamples(1000L, 2000L);
+        assertTrue(result.isEmpty());
     }
 
     private List<CompressedChunk> createTestChunks(int count) {
