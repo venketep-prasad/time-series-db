@@ -44,6 +44,9 @@ public class CompressedChunk implements Writeable {
     public CompressedChunk(StreamInput in) throws IOException {
         this.chunkBytes = in.readByteArray();
         int encodingOrdinal = in.readVInt();
+        if (encodingOrdinal < 0 || encodingOrdinal >= Encoding.values().length) {
+            throw new IOException("Unknown encoding ordinal: " + encodingOrdinal);
+        }
         this.encoding = Encoding.values()[encodingOrdinal];
         this.minTimestamp = in.readLong();
         this.maxTimestamp = in.readLong();

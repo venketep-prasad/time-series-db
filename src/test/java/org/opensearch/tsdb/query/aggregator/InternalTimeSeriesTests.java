@@ -177,10 +177,11 @@ public class InternalTimeSeriesTests extends OpenSearchTestCase {
         // Act - InternalTimeSeries constructor accepts null time series
         InternalTimeSeries internal = new InternalTimeSeries(TEST_NAME, null, TEST_METADATA);
 
-        // Assert - Should handle null time series gracefully
+        // Assert - Should handle null time series gracefully (constructor normalizes to empty list)
         assertEquals(TEST_NAME, internal.getName());
         assertEquals(TEST_METADATA, internal.getMetadata());
-        assertNull(internal.getTimeSeries());
+        assertNotNull(internal.getTimeSeries());
+        assertTrue(internal.getTimeSeries().isEmpty());
     }
 
     // ========== Reduce Function Tests ==========

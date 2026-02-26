@@ -111,20 +111,12 @@ public class CompressedTimeSeries implements Writeable {
     }
 
     public SampleList decodeAllSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
-        List<SampleList> allDecodedSamples = new ArrayList<>(chunks.size());
+        SampleList result = SampleList.fromList(List.of());
         for (CompressedChunk chunk : chunks) {
             if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
-                allDecodedSamples.add(chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp));
+                SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
+                result = MERGE_HELPER.merge(result, decoded, true);
             }
-        }
-
-        if (allDecodedSamples.isEmpty()) {
-            return SampleList.fromList(List.of());
-        }
-
-        SampleList result = allDecodedSamples.get(0);
-        for (int i = 1; i < allDecodedSamples.size(); i++) {
-            result = MERGE_HELPER.merge(result, allDecodedSamples.get(i), true);
         }
         return result;
     }
@@ -138,13 +130,13 @@ public class CompressedTimeSeries implements Writeable {
             && maxTimestamp == that.maxTimestamp
             && step == that.step
             && Objects.equals(chunks, that.chunks)
-            && Objects.equals(labels.toMapView(), that.labels.toMapView())
+            && Objects.equals(labels, that.labels)
             && Objects.equals(alias, that.alias);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(chunks, labels.toMapView(), alias, minTimestamp, maxTimestamp, step);
+        return Objects.hash(chunks, labels, alias, minTimestamp, maxTimestamp, step);
     }
 
     @Override

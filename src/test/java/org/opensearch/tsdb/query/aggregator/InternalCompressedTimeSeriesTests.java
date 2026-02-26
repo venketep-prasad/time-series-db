@@ -446,11 +446,13 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
 
         Labels labels = ByteLabels.fromMap(Map.of("service", "api"));
 
+        // All CompressedTimeSeries share the same query-derived time range (as in production),
+        // but their chunks contain data at different timestamps within that range.
         CompressedTimeSeries series1 = new CompressedTimeSeries(
             List.of(new CompressedChunk(chunk1.bytes(), Encoding.XOR, 1000L, 2000L)),
             labels,
             1000L,
-            2000L,
+            10000L,
             1000L,
             null
         );
@@ -458,8 +460,8 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
         CompressedTimeSeries series2 = new CompressedTimeSeries(
             List.of(new CompressedChunk(chunk2.bytes(), Encoding.XOR, 5000L, 6000L)),
             labels,
-            5000L,
-            6000L,
+            1000L,
+            10000L,
             1000L,
             null
         );
@@ -467,7 +469,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
         CompressedTimeSeries series3 = new CompressedTimeSeries(
             List.of(new CompressedChunk(chunk3.bytes(), Encoding.XOR, 9000L, 10000L)),
             labels,
-            9000L,
+            1000L,
             10000L,
             1000L,
             null

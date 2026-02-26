@@ -134,7 +134,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         private final UnaryPipelineStage reduceStage;
 
         DecodedData(List<TimeSeries> timeSeriesList, UnaryPipelineStage reduceStage) {
-            this.timeSeriesList = timeSeriesList;
+            this.timeSeriesList = timeSeriesList != null ? timeSeriesList : List.of();
             this.reduceStage = reduceStage;
         }
 
@@ -157,16 +157,15 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         public void writeTo(StreamOutput out) throws IOException {
             out.writeVInt(WIRE_FORMAT_VERSION_1);
             out.writeByte(Encoding.NONE.getId());
-            List<TimeSeries> seriesList = timeSeriesList != null ? timeSeriesList : List.of();
-            out.writeVInt(seriesList.size());
-            for (TimeSeries series : seriesList) {
+            out.writeVInt(timeSeriesList.size());
+            for (TimeSeries series : timeSeriesList) {
                 out.writeInt(0);  // hash - placeholder for now
                 SampleList samples = series.getSamples();
                 out.writeVInt(samples.size());
                 for (Sample sample : samples) {
                     sample.writeTo(out);
                 }
-                Map<String, String> labelsMap = series.getLabels() != null ? series.getLabels().toMapView() : new HashMap<>();
+                Map<String, String> labelsMap = series.getLabels() != null ? series.getLabels().toMapView() : Map.of();
                 out.writeMap(labelsMap, StreamOutput::writeString, StreamOutput::writeString);
                 out.writeOptionalString(series.getAlias());
                 out.writeLong(series.getMinTimestamp());
@@ -302,34 +301,35 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
             for (Map.Entry<Labels, List<CompressedTimeSeries>> entry : seriesByLabels.entrySet()) {
                 Labels labels = entry.getKey();
                 List<CompressedTimeSeries> compressedGroup = entry.getValue();
-                long overallMinTimestamp = Long.MAX_VALUE;
-                long overallMaxTimestamp = Long.MIN_VALUE;
-                for (CompressedTimeSeries series : compressedGroup) {
-                    overallMinTimestamp = Math.min(overallMinTimestamp, series.getMinTimestamp());
-                    overallMaxTimestamp = Math.max(overallMaxTimestamp, series.getMaxTimestamp());
-                }
-                long overallStep = compressedGroup.get(0).getStep();
-                String alias = compressedGroup.get(0).getAlias();
-                List<SampleList> allSamplesToMerge = new ArrayList<>(compressedGroup.size());
+
+                // All series in the group share the same query-derived time range and step
+                // (set from the aggregator's minTimestamp/theoreticalMaxTimestamp in collectCompressed)
+                CompressedTimeSeries first = compressedGroup.get(0);
+                long minTimestamp = first.getMinTimestamp();
+                long maxTimestamp = first.getMaxTimestamp();
+                long step = first.getStep();
+                String alias = first.getAlias();
+
+                // Decode, align+dedup each source, then merge.
+                // Align before merge to match the decompressed path (collectDecompressed aligns per-doc
+                // before merging by labels), ensuring consistent behavior across both modes.
+                // maxTimestamp+1 because decodeAllSamples uses exclusive upper bound
+                SampleList mergedSamples = SampleList.fromList(List.of());
                 for (CompressedTimeSeries series : compressedGroup) {
                     try {
-                        // maxTimestamp+1 because decodeAllSamples uses exclusive upper bound
-                        allSamplesToMerge.add(series.decodeAllSamples(overallMinTimestamp, overallMaxTimestamp + 1));
+                        SampleList decoded = series.decodeAllSamples(minTimestamp, maxTimestamp + 1);
+                        SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, minTimestamp, step);
+                        mergedSamples = MERGE_HELPER.merge(
+                            mergedSamples,
+                            aligned,
+                            true // assumeSorted - aligned samples are sorted by timestamp
+                        );
                     } catch (IOException e) {
                         throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
                     }
                 }
-                SampleList mergedSamples;
-                if (allSamplesToMerge.isEmpty()) {
-                    mergedSamples = SampleList.fromList(List.of());
-                } else {
-                    mergedSamples = allSamplesToMerge.get(0);
-                    for (int i = 1; i < allSamplesToMerge.size(); i++) {
-                        mergedSamples = MERGE_HELPER.merge(mergedSamples, allSamplesToMerge.get(i), true);
-                    }
-                }
-                List<Sample> alignedSamples = SampleMerger.alignAndDeduplicate(mergedSamples.toList(), overallMinTimestamp, overallStep);
-                decodedTimeSeries.add(new TimeSeries(alignedSamples, labels, overallMinTimestamp, overallMaxTimestamp, overallStep, alias));
+
+                decodedTimeSeries.add(new TimeSeries(mergedSamples, labels, minTimestamp, maxTimestamp, step, alias));
             }
             return decodedTimeSeries;
         }
@@ -512,8 +512,8 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
             // When merging segment results on a data node (CSS), keep payload compressed so we only decode on coordinator.
             if (!reduceContext.isFinalReduce()
-                && aggregations.stream().allMatch(a -> ((InternalTimeSeries) a).getEncoding() == Encoding.XOR)) {
-                return mergeCompressedWithoutDecoding(aggregations);
+                && aggregations.stream().allMatch(a -> a instanceof InternalTimeSeries its && its.getEncoding() == Encoding.XOR)) {
+                return mergeCompressedWithoutDecoding(aggregations, cbConsumer);
             }
 
             // No reduce stage - collect all time series from all aggregations and merge by labels
@@ -526,14 +526,17 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                     throw new IllegalArgumentException("Expected InternalTimeSeries but got: " + agg.getClass());
                 }
                 List<TimeSeries> timeSeriesList = its.getTimeSeries();
-                if (timeSeriesList == null) continue;
 
                 for (TimeSeries series : timeSeriesList) {
                     Labels seriesLabels = series.getLabels();
 
                     TimeSeries existingSeries = mergedSeriesByLabels.get(seriesLabels);
                     if (existingSeries != null) {
-                        SampleList mergedSamples = MERGE_HELPER.merge(existingSeries.getSamples(), series.getSamples(), true);
+                        SampleList mergedSamples = MERGE_HELPER.merge(
+                            existingSeries.getSamples(),
+                            series.getSamples(),
+                            true // assumeSorted - samples should be sorted in reduce phase
+                        );
 
                         cbConsumer.accept(mergedSamples.ramBytesUsed());
 
@@ -565,12 +568,19 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
      * Groups by labels, concatenates chunks per group, and keeps XOR encoding so decompression
      * only happens on the coordinator.
      */
-    private InternalAggregation mergeCompressedWithoutDecoding(List<InternalAggregation> aggregations) {
+    private InternalAggregation mergeCompressedWithoutDecoding(
+        List<InternalAggregation> aggregations,
+        ReduceCircuitBreakerConsumer cbConsumer
+    ) {
+        cbConsumer.accept(RamUsageConstants.HASHMAP_SHALLOW_SIZE);
+
         Map<Labels, List<CompressedTimeSeries>> byLabels = new HashMap<>();
         for (InternalAggregation agg : aggregations) {
             InternalTimeSeries its = (InternalTimeSeries) agg;
             List<CompressedTimeSeries> list = its.getCompressedTimeSeries();
-            if (list == null || list.isEmpty()) continue;
+            if (list.isEmpty()) {
+                continue;
+            }
             for (CompressedTimeSeries cts : list) {
                 byLabels.computeIfAbsent(cts.getLabels(), k -> new ArrayList<>()).add(cts);
             }
@@ -578,21 +588,26 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         List<CompressedTimeSeries> merged = new ArrayList<>(byLabels.size());
         for (Map.Entry<Labels, List<CompressedTimeSeries>> e : byLabels.entrySet()) {
             List<CompressedTimeSeries> group = e.getValue();
-            if (group.isEmpty()) continue;
             if (group.size() == 1) {
                 merged.add(group.get(0));
                 continue;
             }
-            long minTs = Long.MAX_VALUE;
-            long maxTs = Long.MIN_VALUE;
+            // All series in the group share the same query-derived time range and step
+            CompressedTimeSeries first = group.get(0);
             List<CompressedChunk> allChunks = new ArrayList<>();
             for (CompressedTimeSeries cts : group) {
-                minTs = Math.min(minTs, cts.getMinTimestamp());
-                maxTs = Math.max(maxTs, cts.getMaxTimestamp());
                 allChunks.addAll(cts.getChunks());
             }
-            CompressedTimeSeries first = group.get(0);
-            merged.add(new CompressedTimeSeries(allChunks, first.getLabels(), minTs, maxTs, first.getStep(), first.getAlias()));
+            merged.add(
+                new CompressedTimeSeries(
+                    allChunks,
+                    first.getLabels(),
+                    first.getMinTimestamp(),
+                    first.getMaxTimestamp(),
+                    first.getStep(),
+                    first.getAlias()
+                )
+            );
         }
         return InternalTimeSeries.compressed(name, merged, metadata);
     }
@@ -656,27 +671,25 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     public XContentBuilder doXContentBody(XContentBuilder builder, Params params) throws IOException {
         builder.startArray("timeSeries");
         List<TimeSeries> timeSeriesList = getTimeSeries();
-        if (timeSeriesList != null) {
-            for (TimeSeries series : timeSeriesList) {
+        for (TimeSeries series : timeSeriesList) {
+            builder.startObject();
+            builder.field("hash", 0);  // placeholder for now
+            if (series.getAlias() != null) builder.field("alias", series.getAlias());
+            builder.field("minTimestamp", series.getMinTimestamp());
+            builder.field("maxTimestamp", series.getMaxTimestamp());
+            builder.field("step", series.getStep());
+            builder.startArray("samples");
+            for (Sample sample : series.getSamples()) {
                 builder.startObject();
-                builder.field("hash", 0);  // placeholder for now
-                if (series.getAlias() != null) builder.field("alias", series.getAlias());
-                builder.field("minTimestamp", series.getMinTimestamp());
-                builder.field("maxTimestamp", series.getMaxTimestamp());
-                builder.field("step", series.getStep());
-                builder.startArray("samples");
-                for (Sample sample : series.getSamples()) {
-                    builder.startObject();
-                    builder.field("timestamp", sample.getTimestamp());
-                    builder.field("value", sample.getValue());
-                    builder.endObject();
-                }
-                builder.endArray();
-                if (series.getLabels() != null && !series.getLabels().isEmpty()) {
-                    builder.field("labels", series.getLabels().toMapView());
-                }
+                builder.field("timestamp", sample.getTimestamp());
+                builder.field("value", sample.getValue());
                 builder.endObject();
             }
+            builder.endArray();
+            if (series.getLabels() != null && !series.getLabels().isEmpty()) {
+                builder.field("labels", series.getLabels().toMapView());
+            }
+            builder.endObject();
         }
         builder.endArray();
         return builder;
@@ -753,7 +766,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
             if (ts1.getMinTimestamp() != ts2.getMinTimestamp()) return false;
             if (ts1.getMaxTimestamp() != ts2.getMaxTimestamp()) return false;
             if (ts1.getStep() != ts2.getStep()) return false;
-            if (!ts1.getLabels().toMapView().equals(ts2.getLabels().toMapView())) return false;
+            if (!ts1.getLabels().equals(ts2.getLabels())) return false;
             if (ts1.getSamples().size() != ts2.getSamples().size()) return false;
         }
         return true;

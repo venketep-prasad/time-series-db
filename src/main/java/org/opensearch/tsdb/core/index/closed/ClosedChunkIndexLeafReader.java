@@ -113,7 +113,7 @@ public class ClosedChunkIndexLeafReader extends TSDBLeafReader {
         }
 
         // Decode the serialized chunk
-        ClosedChunk closedChunk = ClosedChunkIndexIO.getClosedChunkFromSerialized(chunkValues.binaryValue());
+        ClosedChunk closedChunk = ClosedChunkIndexIO.getClosedChunkFromSerialized(chunkBytes);
         return List.of(closedChunk.getChunkIterator());
     }
 
@@ -139,6 +139,9 @@ public class ClosedChunkIndexLeafReader extends TSDBLeafReader {
         }
 
         int encodingOrdinal = serializedChunk.bytes[serializedChunk.offset + 1] & 0xFF;
+        if (encodingOrdinal >= Encoding.values().length) {
+            throw new IOException("Unknown encoding ordinal: " + encodingOrdinal);
+        }
         Encoding encoding = Encoding.values()[encodingOrdinal];
 
         byte[] rawChunkBytes = Arrays.copyOfRange(

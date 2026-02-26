@@ -30,9 +30,8 @@ import org.opensearch.tsdb.core.chunk.DedupIterator;
 import org.opensearch.tsdb.core.chunk.MergeIterator;
 import org.opensearch.tsdb.core.index.live.LiveSeriesIndexLeafReader;
 import org.opensearch.tsdb.core.model.ByteLabels;
-import org.opensearch.tsdb.core.model.FloatSampleList;
+
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.model.Sample;
 import org.opensearch.tsdb.core.model.SampleList;
 import org.opensearch.tsdb.core.reader.TSDBDocValues;
 import org.opensearch.tsdb.core.reader.TSDBLeafReader;
@@ -138,7 +137,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
     // Compressed mode (when data nodes have no stages to process)
     private final boolean useCompressedMode;
-    private final Map<Long, List<CompressedTimeSeries>> compressedTimeSeriesByBucket = new HashMap<>();
+    private final Map<Long, Map<Labels, CompressedTimeSeries>> compressedTimeSeriesByBucket = new HashMap<>();
 
     // Estimated sizes for circuit breaker accounting (compressed mode)
     private static final long COMPRESSED_TIMESERIES_OVERHEAD = 56;
@@ -176,7 +175,13 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
      */
     void setCompressedTimeSeriesByBucketForTesting(Map<Long, List<CompressedTimeSeries>> bucketToSeries) {
         compressedTimeSeriesByBucket.clear();
-        compressedTimeSeriesByBucket.putAll(bucketToSeries);
+        for (Map.Entry<Long, List<CompressedTimeSeries>> entry : bucketToSeries.entrySet()) {
+            Map<Labels, CompressedTimeSeries> map = new HashMap<>();
+            for (CompressedTimeSeries cts : entry.getValue()) {
+                map.put(cts.getLabels(), cts);
+            }
+            compressedTimeSeriesByBucket.put(entry.getKey(), map);
+        }
     }
 
     /**
@@ -299,40 +304,32 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 return;
             }
 
-            for (CompressedChunk chunk : compressedChunks) {
-                executionStats.totalChunkCount++;
-                if (isLiveReader) {
-                    executionStats.liveChunkCount++;
-                } else {
-                    executionStats.closedChunkCount++;
-                }
+            int chunkCount = compressedChunks.size();
+            executionStats.totalChunkCount += chunkCount;
+            if (isLiveReader) {
+                executionStats.liveChunkCount += chunkCount;
+            } else {
+                executionStats.closedChunkCount += chunkCount;
             }
 
             Labels labels = tsdbLeafReader.labelsForDoc(doc, tsdbDocValues);
             assert labels instanceof ByteLabels : "labels must support correct equals() behavior";
 
             boolean isNewBucket = !compressedTimeSeriesByBucket.containsKey(bucket);
-            List<CompressedTimeSeries> bucketSeries = compressedTimeSeriesByBucket.computeIfAbsent(bucket, k -> new ArrayList<>());
+            Map<Labels, CompressedTimeSeries> bucketSeries = compressedTimeSeriesByBucket.computeIfAbsent(bucket, k -> new HashMap<>());
             if (isNewBucket) {
-                bytesForThisDoc += SampleList.ARRAYLIST_OVERHEAD + RamUsageEstimator.HASHTABLE_RAM_BYTES_PER_ENTRY;
+                bytesForThisDoc += SampleList.HASHMAP_OVERHEAD + RamUsageEstimator.HASHTABLE_RAM_BYTES_PER_ENTRY;
             }
 
-            CompressedTimeSeries existingSeries = null;
-            for (int i = 0; i < bucketSeries.size(); i++) {
-                if (labels.equals(bucketSeries.get(i).getLabels())) {
-                    existingSeries = bucketSeries.get(i);
-                    break;
-                }
-            }
+            CompressedTimeSeries existingSeries = bucketSeries.get(labels);
             if (existingSeries != null) {
-                // Optimize: mutate in place to avoid allocating new CompressedTimeSeries and ArrayList
                 existingSeries.getChunks().addAll(compressedChunks);
                 for (CompressedChunk chunk : compressedChunks) {
                     bytesForThisDoc += chunk.getCompressedSize() + COMPRESSED_CHUNK_OVERHEAD;
                 }
             } else {
                 CompressedTimeSeries newSeries = new CompressedTimeSeries(
-                    compressedChunks,
+                    new ArrayList<>(compressedChunks),
                     labels,
                     minTimestamp,
                     theoreticalMaxTimestamp,
@@ -343,7 +340,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 for (CompressedChunk chunk : compressedChunks) {
                     bytesForThisDoc += chunk.getCompressedSize() + COMPRESSED_CHUNK_OVERHEAD;
                 }
-                bucketSeries.add(newSeries);
+                bucketSeries.put(labels, newSeries);
             }
             if (bytesForThisDoc > 0) {
                 trackCircuitBreakerBytes(bytesForThisDoc);
@@ -423,28 +420,10 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             }
 
             // Align timestamps to step boundaries and deduplicate
-            // Preallocate based on actual sample count
-            FloatSampleList.Builder alignedSamplesBuilder = new FloatSampleList.Builder(allSamples.size());
+            SampleList alignedSamples = SampleMerger.alignAndDeduplicate(allSamples, minTimestamp, step);
 
             // Accumulate circuit breaker bytes for aligned samples list
-            bytesForThisDoc += SampleList.ARRAYLIST_OVERHEAD + (allSamples.size() * TimeSeries.ESTIMATED_SAMPLE_SIZE);
-
-            long lastAlignedTimestamp = Long.MIN_VALUE;
-            for (Sample sample : allSamples) {
-                // Align timestamp to minTimestamp using floor (integer division)
-                long alignedTimestamp = minTimestamp + ((sample.getTimestamp() - minTimestamp) / step) * step;
-
-                // Deduplicate: only keep the latest sample for each aligned timestamp
-                // Since allSamples is sorted, we can just compare with the previous aligned timestamp
-                if (alignedTimestamp != lastAlignedTimestamp) {
-                    alignedSamplesBuilder.add(alignedTimestamp, sample.getValue());
-                    lastAlignedTimestamp = alignedTimestamp;
-                } else {
-                    // Overwrite the previous sample with the same aligned timestamp
-                    // This keeps the latest sample (ANY_WINS policy)
-                    alignedSamplesBuilder.set(alignedSamplesBuilder.size() - 1, alignedTimestamp, sample.getValue());
-                }
-            }
+            bytesForThisDoc += SampleList.ARRAYLIST_OVERHEAD + (alignedSamples.size() * TimeSeries.ESTIMATED_SAMPLE_SIZE);
 
             // Use unified API to get labels for this document
             Labels labels = tsdbLeafReader.labelsForDoc(doc, tsdbDocValues);
@@ -460,7 +439,15 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             }
             TimeSeries existingSeries = bucketSeries.get(labels);
             if (existingSeries != null) {
-                SampleList mergedSamples = MERGE_HELPER.merge(existingSeries.getSamples(), alignedSamplesBuilder.build(), true);
+                // Merge samples from same time series using helper
+                // Assume data points within each chunk are sorted by timestamp
+                SampleList mergedSamples = MERGE_HELPER.merge(
+                    existingSeries.getSamples(),
+                    alignedSamples,
+                    true // assumeSorted - data points within each chunk are sorted
+                );
+
+                // Accumulate circuit breaker bytes for merged samples (new samples added)
                 int additionalSamples = mergedSamples.size() - existingSeries.getSamples().size();
                 if (additionalSamples > 0) {
                     bytesForThisDoc += additionalSamples * TimeSeries.ESTIMATED_SAMPLE_SIZE;
@@ -477,14 +464,9 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                     )
                 );
             } else {
-                TimeSeries newSeries = new TimeSeries(
-                    alignedSamplesBuilder.build(),
-                    labels,
-                    minTimestamp,
-                    theoreticalMaxTimestamp,
-                    step,
-                    null
-                );
+                TimeSeries newSeries = new TimeSeries(alignedSamples, labels, minTimestamp, theoreticalMaxTimestamp, step, null);
+
+                // Accumulate circuit breaker bytes for new time series
                 bytesForThisDoc += TimeSeries.ESTIMATED_MEMORY_OVERHEAD + labels.ramBytesUsed();
                 bucketSeries.put(labels, newSeries);
             }
@@ -606,11 +588,11 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
 
             if (useCompressedMode) {
                 for (int i = 0; i < bucketOrds.length; i++) {
-                    List<CompressedTimeSeries> compressedTimeSeriesList = compressedTimeSeriesByBucket.getOrDefault(
-                        bucketOrds[i],
-                        List.of()
-                    );
+                    Map<Labels, CompressedTimeSeries> bucketMap = compressedTimeSeriesByBucket.getOrDefault(bucketOrds[i], Map.of());
+                    List<CompressedTimeSeries> compressedTimeSeriesList = new ArrayList<>(bucketMap.values());
                     int seriesCount = compressedTimeSeriesList.size();
+                    // In compressed mode, input == output (no stages applied)
+                    executionStats.inputSeriesCount += seriesCount;
                     executionStats.outputSeriesCount += seriesCount;
                     if (seriesCount > 0) {
                         TSDBMetrics.incrementCounter(TSDBMetrics.AGGREGATION.seriesSentTotal, seriesCount, TAGS_COMPRESSED_TRUE);

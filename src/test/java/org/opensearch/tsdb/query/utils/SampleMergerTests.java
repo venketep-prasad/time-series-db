@@ -143,7 +143,7 @@ public class SampleMergerTests extends OpenSearchTestCase {
     }
 
     public void testAlignAndDeduplicateInvalidStep() {
-        List<Sample> samples = Arrays.asList(new FloatSample(1000L, 10.0));
+        SampleList samples = SampleList.fromList(Arrays.asList(new FloatSample(1000L, 10.0)));
         IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> SampleMerger.alignAndDeduplicate(samples, 0L, 0));
         assertTrue(e.getMessage().contains("Step must be positive"));
 
