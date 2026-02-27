@@ -79,6 +79,16 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     public static volatile int serialFormatSetting = LEGACY_SERIAL_VERSION; // this will be synced with the cluster setting
 
     /**
+     * Controls whether {@link DecodedData#writeTo} uses the new versioned wire format (VInt -1 marker)
+     * or the legacy format (VInt timeSeriesCount). Defaults to {@code false} (legacy) for rolling-upgrade
+     * safety: old nodes cannot parse the new format. Flipped to {@code true} together with
+     * {@code allowCompressedMode} once all nodes are on a version that understands the new format.
+     *
+     * @see TimeSeriesUnfoldAggregator#initialize(org.opensearch.common.settings.ClusterSettings, org.opensearch.common.settings.Settings)
+     */
+    static volatile boolean allowCompressedWireFormat = false;
+
+    /**
      * Encoding format for time series data transmission.
      */
     public enum Encoding {
@@ -155,8 +165,18 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
-            out.writeVInt(WIRE_FORMAT_VERSION_1);
-            out.writeByte(Encoding.NONE.getId());
+            if (allowCompressedWireFormat) {
+                out.writeVInt(WIRE_FORMAT_VERSION_1);
+                out.writeByte(Encoding.NONE.getId());
+            }
+            writeTimeSeriesAndReduceStage(out, timeSeriesList, reduceStage);
+        }
+
+        /**
+         * Writes time series list and optional reduce stage — shared by both legacy and versioned formats.
+         */
+        private static void writeTimeSeriesAndReduceStage(StreamOutput out, List<TimeSeries> timeSeriesList, UnaryPipelineStage reduceStage)
+            throws IOException {
             out.writeVInt(timeSeriesList.size());
             for (TimeSeries series : timeSeriesList) {
                 out.writeInt(0);  // hash - placeholder for now

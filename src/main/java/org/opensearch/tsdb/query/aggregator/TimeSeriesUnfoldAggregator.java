@@ -157,11 +157,12 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
      */
     public static void initialize(ClusterSettings clusterSettings, Settings settings) {
         allowCompressedMode = TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION.get(settings);
+        InternalTimeSeries.allowCompressedWireFormat = allowCompressedMode;
         if (clusterSettings != null) {
-            clusterSettings.addSettingsUpdateConsumer(
-                TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION,
-                newValue -> allowCompressedMode = newValue
-            );
+            clusterSettings.addSettingsUpdateConsumer(TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION, newValue -> {
+                allowCompressedMode = newValue;
+                InternalTimeSeries.allowCompressedWireFormat = newValue;
+            });
         }
     }
 
