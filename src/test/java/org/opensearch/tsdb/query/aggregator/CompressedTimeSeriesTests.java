@@ -10,12 +10,9 @@ package org.opensearch.tsdb.query.aggregator;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.test.OpenSearchTestCase;
-import org.opensearch.tsdb.core.chunk.ChunkAppender;
 import org.opensearch.tsdb.core.chunk.Encoding;
-import org.opensearch.tsdb.core.chunk.XORChunk;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.model.SampleList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -152,50 +149,6 @@ public class CompressedTimeSeriesTests extends OpenSearchTestCase {
         assertTrue(str.contains("test-alias"));
         assertTrue(str.contains("1000"));
         assertTrue(str.contains("2000"));
-    }
-
-    public void testDecodeAllSamplesEmptyChunks() throws Exception {
-        CompressedTimeSeries series = new CompressedTimeSeries(new ArrayList<>(), ByteLabels.emptyLabels(), 1000L, 2000L, 1000L, null);
-        SampleList result = series.decodeAllSamples(1000L, 2000L);
-        assertTrue(result.isEmpty());
-    }
-
-    public void testDecodeAllSamplesSingleChunk() throws Exception {
-        XORChunk xorChunk = new XORChunk();
-        ChunkAppender appender = xorChunk.appender();
-        appender.append(1000L, 10.0);
-        appender.append(2000L, 20.0);
-        appender.append(3000L, 30.0);
-
-        CompressedChunk chunk = new CompressedChunk(xorChunk.bytes(), Encoding.XOR, 1000L, 3000L);
-        CompressedTimeSeries series = new CompressedTimeSeries(
-            List.of(chunk),
-            ByteLabels.fromMap(Map.of("job", "test")),
-            1000L,
-            3000L,
-            1000L,
-            null
-        );
-
-        SampleList result = series.decodeAllSamples(1000L, 4000L);
-        assertEquals(3, result.size());
-        assertEquals(1000L, result.getTimestamp(0));
-        assertEquals(10.0, result.getValue(0), 0.001);
-        assertEquals(3000L, result.getTimestamp(2));
-        assertEquals(30.0, result.getValue(2), 0.001);
-    }
-
-    public void testDecodeAllSamplesSkipsNonOverlappingChunks() throws Exception {
-        XORChunk xorChunk = new XORChunk();
-        xorChunk.appender().append(5000L, 50.0);
-        xorChunk.appender().append(6000L, 60.0);
-
-        CompressedChunk chunk = new CompressedChunk(xorChunk.bytes(), Encoding.XOR, 5000L, 6000L);
-        CompressedTimeSeries series = new CompressedTimeSeries(List.of(chunk), ByteLabels.emptyLabels(), 5000L, 6000L, 1000L, null);
-
-        // Query range does not overlap chunk
-        SampleList result = series.decodeAllSamples(1000L, 2000L);
-        assertTrue(result.isEmpty());
     }
 
     private List<CompressedChunk> createTestChunks(int count) {

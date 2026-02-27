@@ -12,8 +12,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.tsdb.core.model.ByteLabels;
 import org.opensearch.tsdb.core.model.Labels;
-import org.opensearch.tsdb.core.model.SampleList;
-import org.opensearch.tsdb.query.utils.SampleMerger;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,7 +30,6 @@ public class CompressedTimeSeries implements Writeable {
     private final long minTimestamp;
     private final long maxTimestamp;
     private final long step;
-    private static final SampleMerger MERGE_HELPER = new SampleMerger(SampleMerger.DeduplicatePolicy.ANY_WINS);
 
     public CompressedTimeSeries(
         List<CompressedChunk> chunks,
@@ -108,17 +105,6 @@ public class CompressedTimeSeries implements Writeable {
 
     public int getChunkCount() {
         return chunks.size();
-    }
-
-    public SampleList decodeAllSamples(long queryMinTimestamp, long queryMaxTimestamp) throws IOException {
-        SampleList result = SampleList.fromList(List.of());
-        for (CompressedChunk chunk : chunks) {
-            if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
-                SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
-                result = MERGE_HELPER.merge(result, decoded, true);
-            }
-        }
-        return result;
     }
 
     @Override

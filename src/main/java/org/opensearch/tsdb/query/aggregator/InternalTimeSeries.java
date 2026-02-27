@@ -302,7 +302,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         /**
          * Decodes a list of compressed time series into decoded time series.
-         * Groups by labels, decodes each group's chunks, merges samples, then aligns and deduplicates.
+         * Groups by labels, pools all chunks per group into a unified series, then decodes and aligns in one pass.
          */
         private static List<TimeSeries> decodeCompressedTimeSeries(List<CompressedTimeSeries> compressedList) {
             Map<Labels, List<CompressedTimeSeries>> seriesByLabels = new HashMap<>();
@@ -322,28 +322,38 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                 long step = first.getStep();
                 String alias = first.getAlias();
 
-                // Decode, align+dedup each source, then merge.
-                // Align before merge to match the decompressed path (collectDecompressed aligns per-doc
-                // before merging by labels), ensuring consistent behavior across both modes.
-                // maxTimestamp+1 because decodeAllSamples uses exclusive upper bound
-                SampleList mergedSamples = SampleList.fromList(List.of());
+                // Pool all chunks from the group and decode+align in one call.
+                // maxTimestamp+1 because decodeAndAlign uses exclusive upper bound.
+                List<CompressedChunk> allChunks = new ArrayList<>();
                 for (CompressedTimeSeries series : compressedGroup) {
-                    try {
-                        SampleList decoded = series.decodeAllSamples(minTimestamp, maxTimestamp + 1);
-                        SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, minTimestamp, step);
-                        mergedSamples = MERGE_HELPER.merge(
-                            mergedSamples,
-                            aligned,
-                            true // assumeSorted - aligned samples are sorted by timestamp
-                        );
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
-                    }
+                    allChunks.addAll(series.getChunks());
                 }
-
-                decodedTimeSeries.add(new TimeSeries(mergedSamples, labels, minTimestamp, maxTimestamp, step, alias));
+                try {
+                    SampleList samples = decodeAndAlign(allChunks, minTimestamp, maxTimestamp + 1, step);
+                    decodedTimeSeries.add(new TimeSeries(samples, labels, minTimestamp, maxTimestamp, step, alias));
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
+                }
             }
             return decodedTimeSeries;
+        }
+
+        /**
+         * Decodes the given chunks within the query time range, aligning each chunk's samples to step
+         * boundaries before merging. This matches the decompressed path where alignment happens
+         * per-doc before merging by labels, ensuring consistent dedup behavior across both modes.
+         */
+        private static SampleList decodeAndAlign(List<CompressedChunk> chunks, long queryMinTimestamp, long queryMaxTimestamp, long step)
+            throws IOException {
+            SampleList result = SampleList.fromList(List.of());
+            for (CompressedChunk chunk : chunks) {
+                if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
+                    SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
+                    SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, queryMinTimestamp, step);
+                    result = MERGE_HELPER.merge(result, aligned, true);
+                }
+            }
+            return result;
         }
 
         static CompressedData readFrom(StreamInput in) throws IOException {
