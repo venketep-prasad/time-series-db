@@ -542,7 +542,6 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
     public static final Setting<Integer> TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT = Setting.intSetting(
         "tsdb_engine.query.internal_time_series_format",
         0,  // default: 0 (legacy wire format for rolling upgrade safety)
->>>>>>> 91e3f95 (Decouple versioned wire format from compression setting)
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
