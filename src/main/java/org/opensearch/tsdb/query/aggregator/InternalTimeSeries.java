@@ -79,16 +79,6 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     public static volatile int serialFormatSetting = LEGACY_SERIAL_VERSION; // this will be synced with the cluster setting
 
     /**
-     * Controls whether {@link DecodedData#writeTo} uses the new versioned wire format (VInt -1 marker)
-     * or the legacy format (VInt timeSeriesCount). Defaults to {@code false} (legacy) for rolling-upgrade
-     * safety: old nodes cannot parse the new format. Flipped to {@code true} together with
-     * {@code allowCompressedMode} once all nodes are on a version that understands the new format.
-     *
-     * @see TimeSeriesUnfoldAggregator#initialize(org.opensearch.common.settings.ClusterSettings, org.opensearch.common.settings.Settings)
-     */
-    static volatile boolean allowCompressedWireFormat = false;
-
-    /**
      * Encoding format for time series data transmission.
      */
     public enum Encoding {
@@ -165,8 +155,8 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
-            if (allowCompressedWireFormat) {
-                out.writeVInt(WIRE_FORMAT_VERSION_1);
+            if (serialFormatSetting != LEGACY_SERIAL_VERSION) {
+                out.writeVInt(-serialFormatSetting);
                 out.writeByte(Encoding.NONE.getId());
             }
             writeTimeSeriesAndReduceStage(out, timeSeriesList, reduceStage);
@@ -284,8 +274,10 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
-            out.writeVInt(WIRE_FORMAT_VERSION_1);
-            out.writeByte(Encoding.XOR.getId());
+            if (serialFormatSetting != LEGACY_SERIAL_VERSION) {
+                out.writeVInt(-serialFormatSetting);
+                out.writeByte(Encoding.XOR.getId());
+            }
             out.writeVInt(compressedTimeSeries.size());
             for (CompressedTimeSeries series : compressedTimeSeries) {
                 series.writeTo(out);
@@ -427,7 +419,8 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     public InternalTimeSeries(StreamInput in) throws IOException {
         super(in);
         int firstValue = in.readVInt();
-        if (firstValue == WIRE_FORMAT_VERSION_1) {
+        if (firstValue < 0) {
+            // Versioned format: negative VInt encodes version as -version
             Encoding encoding = Encoding.fromId(in.readByte());
             this.data = switch (encoding) {
                 case NONE -> DecodedData.readFrom(in);

@@ -309,13 +309,13 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
     // ========== Wire Format Backward Compatibility Tests ==========
 
     /**
-     * Legacy wire format: when allowCompressedWireFormat=false, DecodedData.writeTo() writes the
+     * Legacy wire format: when allowVersionedSerialization=false, DecodedData.writeTo() writes the
      * pre-PR#42 format (VInt timeSeriesCount first, no -1 marker). The new reader must deserialize it.
      */
     public void testBackCompatibilityLegacyFormat() throws IOException {
-        boolean prev = InternalTimeSeries.allowCompressedWireFormat;
+        boolean prev = InternalTimeSeries.allowVersionedSerialization;
         try {
-            InternalTimeSeries.allowCompressedWireFormat = false;
+            InternalTimeSeries.allowVersionedSerialization = false;
 
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             UnaryPipelineStage reduceStage = randomBoolean() ? null : new SumStage("region");
@@ -358,18 +358,18 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowCompressedWireFormat = prev;
+            InternalTimeSeries.allowVersionedSerialization = prev;
         }
     }
 
     /**
-     * New wire format: when allowCompressedWireFormat=true, DecodedData.writeTo() writes
+     * New wire format: when allowVersionedSerialization=true, DecodedData.writeTo() writes
      * the versioned format (VInt -1, encoding byte, then data). The new reader must deserialize it.
      */
     public void testBackCompatibilityNewFormat() throws IOException {
-        boolean prev = InternalTimeSeries.allowCompressedWireFormat;
+        boolean prev = InternalTimeSeries.allowVersionedSerialization;
         try {
-            InternalTimeSeries.allowCompressedWireFormat = true;
+            InternalTimeSeries.allowVersionedSerialization = true;
 
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             UnaryPipelineStage reduceStage = randomBoolean() ? null : new SumStage("region");
@@ -404,7 +404,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowCompressedWireFormat = prev;
+            InternalTimeSeries.allowVersionedSerialization = prev;
         }
     }
 
@@ -413,13 +413,13 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * Ensures data survives format transitions during rolling upgrades.
      */
     public void testCrossFormatRoundTrip() throws IOException {
-        boolean prev = InternalTimeSeries.allowCompressedWireFormat;
+        boolean prev = InternalTimeSeries.allowVersionedSerialization;
         try {
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             InternalTimeSeries original = new InternalTimeSeries("cross_fmt", timeSeries, Map.of("x", "y"));
 
             // Step 1: serialize legacy
-            InternalTimeSeries.allowCompressedWireFormat = false;
+            InternalTimeSeries.allowVersionedSerialization = false;
             byte[] legacyBytes;
             try (BytesStreamOutput out = new BytesStreamOutput()) {
                 original.writeTo(out);
@@ -443,7 +443,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
             }
 
             // Step 3: re-serialize with new format
-            InternalTimeSeries.allowCompressedWireFormat = true;
+            InternalTimeSeries.allowVersionedSerialization = true;
             try (BytesStreamOutput out = new BytesStreamOutput()) {
                 fromLegacy.writeTo(out);
                 try (StreamInput in = out.bytes().streamInput()) {
@@ -461,7 +461,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowCompressedWireFormat = prev;
+            InternalTimeSeries.allowVersionedSerialization = prev;
         }
     }
 
@@ -470,16 +470,16 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * works with both wire format settings. The default createTestInstance always uses NONE encoding.
      */
     public void testRandomRoundTripWithBothFormats() throws IOException {
-        boolean prev = InternalTimeSeries.allowCompressedWireFormat;
+        boolean prev = InternalTimeSeries.allowVersionedSerialization;
         try {
             for (boolean format : new boolean[] { false, true }) {
-                InternalTimeSeries.allowCompressedWireFormat = format;
+                InternalTimeSeries.allowVersionedSerialization = format;
                 InternalTimeSeries instance = createTestInstance();
                 InternalTimeSeries copy = copyInstance(instance, Version.CURRENT);
-                assertEquals("round-trip failed with allowCompressedWireFormat=" + format, instance, copy);
+                assertEquals("round-trip failed with allowVersionedSerialization=" + format, instance, copy);
             }
         } finally {
-            InternalTimeSeries.allowCompressedWireFormat = prev;
+            InternalTimeSeries.allowVersionedSerialization = prev;
         }
     }
 

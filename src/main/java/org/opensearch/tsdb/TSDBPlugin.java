@@ -535,12 +535,14 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
     );
 
     /**
-     * Setting to track which time series format the data node should use for serialization. For back compatibility purpose,
-     * default should be changed accordingly once the new change has been deployed and setting being changed.
+     * Setting to track which time series format the data node should use for serialization.
+     * 0 (default) = legacy format (VInt timeSeriesCount); 1 = versioned format (VInt -1 marker + encoding byte).
+     * Default should be changed once the new format has been deployed and validated.
      */
     public static final Setting<Integer> TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT = Setting.intSetting(
         "tsdb_engine.query.internal_time_series_format",
-        0,  // default: false (compression disabled)
+        0,  // default: 0 (legacy wire format for rolling upgrade safety)
+>>>>>>> 91e3f95 (Decouple versioned wire format from compression setting)
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
@@ -753,6 +755,7 @@ public class TSDBPlugin extends Plugin implements SearchPlugin, EnginePlugin, Ac
             TSDB_ENGINE_WILDCARD_QUERY_CACHE_EXPIRE_AFTER,
             TSDB_ENGINE_FORCE_NO_PUSHDOWN,
             TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION,
+            TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT,
             TSDB_ENGINE_CCS_MINIMIZE_ROUNDTRIPS,
             TSDB_ENGINE_DEFAULT_STEP,
             TSDB_ENGINE_REMOTE_INDEX_SETTINGS_CACHE_TTL,
