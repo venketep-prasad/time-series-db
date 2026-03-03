@@ -271,6 +271,7 @@ testClusters.integTest {
     // NOTE: Mutually exclusive with telemetry-otel. OpenSearch throws
     // "Cannot register more than one telemetry" if both plugins are installed.
     if (project.hasProperty('benchmarkTelemetry')) {
+        evaluationDependsOn(':benchmark-telemetry')
         systemProperty 'opensearch.experimental.feature.telemetry.enabled', 'true'
         setting 'telemetry.feature.metrics.enabled', 'true'
         plugin(project(':benchmark-telemetry').tasks.bundlePlugin.archiveFile)

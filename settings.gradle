@@ -12,5 +12,9 @@ rootProject.name = 'tsdb'
 // Include benchmarks subproject
 include 'benchmarks'
 
-// Include benchmark-telemetry plugin (for local runs with realistic metrics overhead)
-include 'benchmark-telemetry'
+// Include benchmark-telemetry plugin only when explicitly requested via -PbenchmarkTelemetry.
+// This prevents the plugin zip from being built and packaged in production builds,
+// where it would conflict with the production OTel telemetry plugin.
+if (gradle.startParameter.projectProperties.containsKey('benchmarkTelemetry')) {
+    include 'benchmark-telemetry'
+}
