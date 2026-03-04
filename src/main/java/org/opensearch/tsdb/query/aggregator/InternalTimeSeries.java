@@ -274,10 +274,10 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
-            if (serialFormatSetting != LEGACY_SERIAL_VERSION) {
-                out.writeVInt(-serialFormatSetting);
-                out.writeByte(Encoding.XOR.getId());
-            }
+            // Compressed data always requires the versioned header — the legacy deserializer
+            // would misinterpret compressed bytes as decoded TimeSeries fields.
+            out.writeVInt(WIRE_FORMAT_VERSION_1);
+            out.writeByte(Encoding.XOR.getId());
             out.writeVInt(compressedTimeSeries.size());
             for (CompressedTimeSeries series : compressedTimeSeries) {
                 series.writeTo(out);
@@ -330,7 +330,11 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                 }
                 try {
                     SampleList samples = decodeAndAlign(allChunks, minTimestamp, maxTimestamp + 1, step);
-                    decodedTimeSeries.add(new TimeSeries(samples, labels, minTimestamp, maxTimestamp, step, alias));
+                    // Skip series with no data in the query range, consistent with the
+                    // decompressed path which returns early when allSamples.isEmpty().
+                    if (!samples.isEmpty()) {
+                        decodedTimeSeries.add(new TimeSeries(samples, labels, minTimestamp, maxTimestamp, step, alias));
+                    }
                 } catch (IOException e) {
                     throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
                 }
@@ -342,6 +346,11 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
          * Decodes the given chunks within the query time range, aligning each chunk's samples to step
          * boundaries before merging. This matches the decompressed path where alignment happens
          * per-doc before merging by labels, ensuring consistent dedup behavior across both modes.
+         *
+         * <p>Argument order in merge: {@code merge(aligned, result)} places the accumulated result
+         * in the val2 position so that {@code ANY_WINS} (which keeps val2) preserves the first
+         * chunk's value for duplicate timestamps — matching the decompressed path's
+         * {@code DedupIterator(FIRST)} behavior.</p>
          */
         private static SampleList decodeAndAlign(List<CompressedChunk> chunks, long queryMinTimestamp, long queryMaxTimestamp, long step)
             throws IOException {
@@ -350,7 +359,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                 if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
                     SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
                     SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, queryMinTimestamp, step);
-                    result = MERGE_HELPER.merge(result, aligned, true);
+                    result = MERGE_HELPER.merge(aligned, result, true);
                 }
             }
             return result;
@@ -429,17 +438,18 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     public InternalTimeSeries(StreamInput in) throws IOException {
         super(in);
         int firstValue = in.readVInt();
-        if (firstValue < 0) {
-            // Versioned format: negative VInt encodes version as -version
+        if (firstValue >= 0) {
+            // Legacy format: firstValue is the timeSeriesCount
+            this.data = DecodedData.readFromLegacy(in, firstValue);
+        } else if (firstValue == WIRE_FORMAT_VERSION_1) {
+            // Versioned format: read encoding byte to dispatch
             Encoding encoding = Encoding.fromId(in.readByte());
             this.data = switch (encoding) {
                 case NONE -> DecodedData.readFrom(in);
                 case XOR -> CompressedData.readFrom(in);
             };
-        } else if (firstValue >= 0) {
-            this.data = DecodedData.readFromLegacy(in, firstValue);
         } else {
-            throw new IOException("Invalid format marker or timeSeriesCount: " + firstValue);
+            throw new IOException("Unknown wire format version: " + (-firstValue));
         }
     }
 

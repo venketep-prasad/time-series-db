@@ -158,14 +158,14 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
      */
     public static void initialize(ClusterSettings clusterSettings, Settings settings) {
         allowCompressedMode = TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION.get(settings);
-        InternalTimeSeries.serializationVersion = TSDBPlugin.TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT.get(settings);
+        InternalTimeSeries.serialFormatSetting = TSDBPlugin.TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT.get(settings);
         if (clusterSettings != null) {
             clusterSettings.addSettingsUpdateConsumer(
                 TSDBPlugin.TSDB_ENGINE_ENABLE_INTERNAL_AGG_CHUNK_COMPRESSION,
                 newValue -> allowCompressedMode = newValue
             );
             clusterSettings.addSettingsUpdateConsumer(TSDBPlugin.TSDB_ENGINE_INTERNAL_TIME_SERIES_FORMAT, version -> {
-                InternalTimeSeries.serializationVersion = version;
+                InternalTimeSeries.serialFormatSetting = version;
             });
         }
     }
@@ -307,6 +307,29 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             }
             if (compressedChunks.isEmpty()) {
                 return;
+            }
+
+            // Filter to chunks that overlap the query time range. Chunks entirely outside
+            // [minTimestamp, maxTimestamp] carry no useful data, consistent with the
+            // decompressed path where decodeSamples(minTimestamp, maxTimestamp) only
+            // returns in-range samples.
+            long queryMaxExclusive = theoreticalMaxTimestamp + 1;
+            if (compressedChunks.size() == 1) {
+                // Fast path: closed-index chunks always produce a single chunk per doc
+                if (!compressedChunks.get(0).overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
+                    return;
+                }
+            } else {
+                List<CompressedChunk> filtered = new ArrayList<>(compressedChunks.size());
+                for (CompressedChunk chunk : compressedChunks) {
+                    if (chunk.overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
+                        filtered.add(chunk);
+                    }
+                }
+                if (filtered.isEmpty()) {
+                    return;
+                }
+                compressedChunks = filtered;
             }
 
             int chunkCount = compressedChunks.size();

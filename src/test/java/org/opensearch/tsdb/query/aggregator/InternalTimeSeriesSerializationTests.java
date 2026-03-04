@@ -313,9 +313,9 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * pre-PR#42 format (VInt timeSeriesCount first, no -1 marker). The new reader must deserialize it.
      */
     public void testBackCompatibilityLegacyFormat() throws IOException {
-        boolean prev = InternalTimeSeries.allowVersionedSerialization;
+        int prev = InternalTimeSeries.serialFormatSetting;
         try {
-            InternalTimeSeries.allowVersionedSerialization = false;
+            InternalTimeSeries.serialFormatSetting = InternalTimeSeries.LEGACY_SERIAL_VERSION;
 
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             UnaryPipelineStage reduceStage = randomBoolean() ? null : new SumStage("region");
@@ -358,7 +358,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowVersionedSerialization = prev;
+            InternalTimeSeries.serialFormatSetting = prev;
         }
     }
 
@@ -367,9 +367,9 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * the versioned format (VInt -1, encoding byte, then data). The new reader must deserialize it.
      */
     public void testBackCompatibilityNewFormat() throws IOException {
-        boolean prev = InternalTimeSeries.allowVersionedSerialization;
+        int prev = InternalTimeSeries.serialFormatSetting;
         try {
-            InternalTimeSeries.allowVersionedSerialization = true;
+            InternalTimeSeries.serialFormatSetting = 1;
 
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             UnaryPipelineStage reduceStage = randomBoolean() ? null : new SumStage("region");
@@ -404,7 +404,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowVersionedSerialization = prev;
+            InternalTimeSeries.serialFormatSetting = prev;
         }
     }
 
@@ -413,13 +413,13 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * Ensures data survives format transitions during rolling upgrades.
      */
     public void testCrossFormatRoundTrip() throws IOException {
-        boolean prev = InternalTimeSeries.allowVersionedSerialization;
+        int prev = InternalTimeSeries.serialFormatSetting;
         try {
             List<TimeSeries> timeSeries = createRandomTimeSeries();
             InternalTimeSeries original = new InternalTimeSeries("cross_fmt", timeSeries, Map.of("x", "y"));
 
             // Step 1: serialize legacy
-            InternalTimeSeries.allowVersionedSerialization = false;
+            InternalTimeSeries.serialFormatSetting = InternalTimeSeries.LEGACY_SERIAL_VERSION;
             byte[] legacyBytes;
             try (BytesStreamOutput out = new BytesStreamOutput()) {
                 original.writeTo(out);
@@ -443,7 +443,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
             }
 
             // Step 3: re-serialize with new format
-            InternalTimeSeries.allowVersionedSerialization = true;
+            InternalTimeSeries.serialFormatSetting = 1;
             try (BytesStreamOutput out = new BytesStreamOutput()) {
                 fromLegacy.writeTo(out);
                 try (StreamInput in = out.bytes().streamInput()) {
@@ -461,7 +461,7 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
                 }
             }
         } finally {
-            InternalTimeSeries.allowVersionedSerialization = prev;
+            InternalTimeSeries.serialFormatSetting = prev;
         }
     }
 
@@ -470,16 +470,16 @@ public class InternalTimeSeriesSerializationTests extends AbstractWireTestCase<I
      * works with both wire format settings. The default createTestInstance always uses NONE encoding.
      */
     public void testRandomRoundTripWithBothFormats() throws IOException {
-        boolean prev = InternalTimeSeries.allowVersionedSerialization;
+        int prev = InternalTimeSeries.serialFormatSetting;
         try {
-            for (boolean format : new boolean[] { false, true }) {
-                InternalTimeSeries.allowVersionedSerialization = format;
+            for (int format : new int[] { InternalTimeSeries.LEGACY_SERIAL_VERSION, 1 }) {
+                InternalTimeSeries.serialFormatSetting = format;
                 InternalTimeSeries instance = createTestInstance();
                 InternalTimeSeries copy = copyInstance(instance, Version.CURRENT);
                 assertEquals("round-trip failed with allowVersionedSerialization=" + format, instance, copy);
             }
         } finally {
-            InternalTimeSeries.allowVersionedSerialization = prev;
+            InternalTimeSeries.serialFormatSetting = prev;
         }
     }
 

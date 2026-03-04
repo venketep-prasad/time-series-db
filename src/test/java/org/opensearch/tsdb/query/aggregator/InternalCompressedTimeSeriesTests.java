@@ -51,18 +51,24 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
     }
 
     public void testSerialization() throws Exception {
-        List<CompressedTimeSeries> series = createCompressedSeries(2);
-        InternalTimeSeries original = InternalTimeSeries.compressed("test-agg", series, Map.of("key", "value"));
+        int prev = InternalTimeSeries.serialFormatSetting;
+        try {
+            InternalTimeSeries.serialFormatSetting = 1;
+            List<CompressedTimeSeries> series = createCompressedSeries(2);
+            InternalTimeSeries original = InternalTimeSeries.compressed("test-agg", series, Map.of("key", "value"));
 
-        BytesStreamOutput out = new BytesStreamOutput();
-        original.writeTo(out);
+            BytesStreamOutput out = new BytesStreamOutput();
+            original.writeTo(out);
 
-        StreamInput in = out.bytes().streamInput();
-        InternalTimeSeries deserialized = new InternalTimeSeries(in);
+            StreamInput in = out.bytes().streamInput();
+            InternalTimeSeries deserialized = new InternalTimeSeries(in);
 
-        assertEquals("test-agg", deserialized.getName());
-        assertEquals(InternalTimeSeries.Encoding.XOR, deserialized.getEncoding());
-        assertEquals(2, deserialized.getTimeSeries().size());
+            assertEquals("test-agg", deserialized.getName());
+            assertEquals(InternalTimeSeries.Encoding.XOR, deserialized.getEncoding());
+            assertEquals(2, deserialized.getTimeSeries().size());
+        } finally {
+            InternalTimeSeries.serialFormatSetting = prev;
+        }
     }
 
     public void testGetTimeSeriesDecodesChunks() {
@@ -101,9 +107,10 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
 
         InternalTimeSeries aggregation = InternalTimeSeries.compressed("test", List.of(emptySeries), Map.of());
 
+        // Empty-chunk series are filtered out, consistent with the decompressed
+        // path which skips series with no samples in the query range
         List<TimeSeries> decoded = aggregation.getTimeSeries();
-        assertEquals(1, decoded.size());
-        assertEquals(0, decoded.get(0).getSamples().size());
+        assertEquals(0, decoded.size());
     }
 
     public void testGetTimeSeriesDecodesMultipleChunksInSingleSeries() {
