@@ -270,7 +270,7 @@ testClusters.integTest {
     // Usage: ./gradlew run -PbenchmarkTelemetry
     // NOTE: Mutually exclusive with telemetry-otel. OpenSearch throws
     // "Cannot register more than one telemetry" if both plugins are installed.
-    if (project.hasProperty('benchmarkTelemetry')) {
+    if (gradle.startParameter.projectProperties.containsKey('benchmarkTelemetry')) {
         evaluationDependsOn(':benchmark-telemetry')
         systemProperty 'opensearch.experimental.feature.telemetry.enabled', 'true'
         setting 'telemetry.feature.metrics.enabled', 'true'
