@@ -11,8 +11,7 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.tsdb.core.model.FloatSample;
-import org.opensearch.tsdb.core.model.Sample;
+import org.opensearch.tsdb.core.model.FloatSampleList;
 import org.opensearch.tsdb.core.model.SampleList;
 import org.opensearch.tsdb.query.aggregator.TimeSeries;
 import org.opensearch.tsdb.query.stage.PipelineStageAnnotation;
@@ -63,9 +62,9 @@ public class TransformNullStage implements UnaryPipelineStage {
             long seriesMaxTimestamp = series.getMaxTimestamp();
             long seriesStep = series.getStep();
 
-            // Calculate size and pre-create dense samples list
+            // Calculate size and pre-allocate FloatSampleList builder
             int arraySize = (int) ((seriesMaxTimestamp - seriesMinTimestamp) / seriesStep) + 1;
-            List<Sample> denseSamples = new ArrayList<>(arraySize);
+            FloatSampleList.Builder denseSamplesBuilder = new FloatSampleList.Builder(arraySize);
 
             // Build dense samples in one pass using a pointer into existing samples
             SampleList existingSamples = series.getSamples();
@@ -78,21 +77,21 @@ public class TransformNullStage implements UnaryPipelineStage {
                     double value = existingSamples.getValue(sampleIndex);
                     // Treat NaN as null/missing
                     if (Double.isNaN(value)) {
-                        denseSamples.add(new FloatSample(timestamp, fillValue));
+                        denseSamplesBuilder.add(timestamp, fillValue);
                     } else {
-                        denseSamples.add(new FloatSample(existingSamples.getTimestamp(sampleIndex), existingSamples.getValue(sampleIndex)));
+                        denseSamplesBuilder.add(existingSamples.getTimestamp(sampleIndex), existingSamples.getValue(sampleIndex));
                     }
                     sampleIndex++;
                 } else {
                     // Missing timestamp, use fill value
-                    denseSamples.add(new FloatSample(timestamp, fillValue));
+                    denseSamplesBuilder.add(timestamp, fillValue);
                 }
                 timestamp += seriesStep;
             }
 
             result.add(
                 new TimeSeries(
-                    denseSamples,
+                    denseSamplesBuilder.build(),
                     series.getLabels(),
                     series.getMinTimestamp(),
                     series.getMaxTimestamp(),

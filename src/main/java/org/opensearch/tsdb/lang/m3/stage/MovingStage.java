@@ -12,7 +12,7 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.tsdb.core.model.FloatSample;
+import org.opensearch.tsdb.core.model.FloatSampleList;
 import org.opensearch.tsdb.core.model.Sample;
 import org.opensearch.tsdb.core.model.SampleList;
 import org.opensearch.tsdb.lang.m3.common.WindowAggregationType;
@@ -104,7 +104,7 @@ public class MovingStage implements UnaryPipelineStage {
             Iterator<Sample> right = samples.iterator();
             Sample leftSample = left.next();
             Sample rightSample = right.next();
-            List<Sample> movingSamples = new ArrayList<>();
+            FloatSampleList.Builder movingSamplesBuilder = new FloatSampleList.Builder();
 
             // Iterate through all timestamps in the time grid
             for (long timestamp = ts.getMinTimestamp(); timestamp <= ts.getMaxTimestamp(); timestamp += stepSize) {
@@ -114,7 +114,7 @@ public class MovingStage implements UnaryPipelineStage {
                 // Only add sample if there are non-null values in the window
                 if (windowTransformer.getNonNullCount() > 0) {
                     double aggregatedValue = windowTransformer.value();
-                    movingSamples.add(new FloatSample(timestamp, aggregatedValue));
+                    movingSamplesBuilder.add(timestamp, aggregatedValue);
                 }
 
                 // Step 2: Update the window with the current data point
@@ -145,7 +145,14 @@ public class MovingStage implements UnaryPipelineStage {
             }
 
             result.add(
-                new TimeSeries(movingSamples, ts.getLabels(), ts.getMinTimestamp(), ts.getMaxTimestamp(), ts.getStep(), ts.getAlias())
+                new TimeSeries(
+                    movingSamplesBuilder.build(),
+                    ts.getLabels(),
+                    ts.getMinTimestamp(),
+                    ts.getMaxTimestamp(),
+                    ts.getStep(),
+                    ts.getAlias()
+                )
             );
         }
 
