@@ -65,18 +65,20 @@ import org.opensearch.tsdb.query.breaker.ReduceCircuitBreakerConsumer;
 public class InternalTimeSeries extends InternalAggregation implements TimeSeriesProvider {
 
     /**
-     * Format marker for wire serialization.
-     * Using -1 because old format (VInt timeSeriesCount) can never be negative.
-     * This allows self-describing format detection: if first VInt == -1, new format (read encoding
-     * byte next); if first VInt >= 0, old format (value is timeSeriesCount).
-     * Future versions (e.g. -2) may add further format changes.
+     * Wire format version constants and cluster-synced setting.
+     *
+     * <p>{@code serialFormatSetting} is the single source of truth for wire format versioning.
+     * On write, the negated setting ({@code -serialFormatSetting}) is written as the first VInt.
+     * On read, the sign of the first VInt determines the format:
+     * <ul>
+     *   <li>{@code firstVInt >= 0} → legacy format (value is the time series count)</li>
+     *   <li>{@code firstVInt < 0} → versioned format ({@code -firstVInt} is the version; read encoding byte next)</li>
+     * </ul>
      */
-    private static final int WIRE_FORMAT_VERSION_1 = -1;
-
     public static final int LEGACY_SERIAL_VERSION = 0;
     public static final int CURRENT_SERIAL_VERSION = 1;
 
-    public static volatile int serialFormatSetting = LEGACY_SERIAL_VERSION; // this will be synced with the cluster setting
+    public static volatile int serialFormatSetting = LEGACY_SERIAL_VERSION; // this will be synced with cluster setting
 
     /**
      * Encoding format for time series data transmission.
@@ -212,18 +214,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         }
 
         static DecodedData readFrom(StreamInput in) throws IOException {
-            int timeSeriesCount = in.readVInt();
-            List<TimeSeries> timeSeriesList = new ArrayList<>(timeSeriesCount);
-            for (int i = 0; i < timeSeriesCount; i++) {
-                timeSeriesList.add(readTimeSeries(in));
-            }
-            boolean hasReduceStage = in.readBoolean();
-            UnaryPipelineStage reduceStage = null;
-            if (hasReduceStage) {
-                String stageName = in.readString();
-                reduceStage = (UnaryPipelineStage) PipelineStageFactory.readFrom(in, stageName);
-            }
-            return new DecodedData(timeSeriesList, reduceStage);
+            return readFromLegacy(in, in.readVInt());
         }
 
         /**
@@ -274,9 +265,13 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
-            // Compressed data always requires the versioned header — the legacy deserializer
-            // would misinterpret compressed bytes as decoded TimeSeries fields.
-            out.writeVInt(WIRE_FORMAT_VERSION_1);
+            if (serialFormatSetting == LEGACY_SERIAL_VERSION) {
+                throw new IllegalStateException(
+                    "Cannot serialize compressed data with legacy wire format. "
+                        + "Enable versioned serialization (serialFormatSetting != 0) before enabling compressed mode."
+                );
+            }
+            out.writeVInt(-serialFormatSetting);
             out.writeByte(Encoding.XOR.getId());
             out.writeVInt(compressedTimeSeries.size());
             for (CompressedTimeSeries series : compressedTimeSeries) {
@@ -356,11 +351,9 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
             throws IOException {
             SampleList result = SampleList.fromList(List.of());
             for (CompressedChunk chunk : chunks) {
-                if (chunk.overlapsTimeRange(queryMinTimestamp, queryMaxTimestamp)) {
-                    SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
-                    SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, queryMinTimestamp, step);
-                    result = MERGE_HELPER.merge(aligned, result, true);
-                }
+                SampleList decoded = chunk.decodeSamples(queryMinTimestamp, queryMaxTimestamp);
+                SampleList aligned = SampleMerger.alignAndDeduplicate(decoded, queryMinTimestamp, step);
+                result = MERGE_HELPER.merge(aligned, result, true);
             }
             return result;
         }
@@ -428,9 +421,10 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
      * Reads an InternalTimeSeries from a stream for deserialization.
      * Handles backward compatibility with old builds using format marker detection.
      *
-     * <p>Detection: if first VInt == WIRE_FORMAT_VERSION_1 (-1), new format (read encoding byte, then data);
-     * if first VInt >= 0, old format (value is timeSeriesCount, read data directly). This is self-describing
-     * so it works across coordinator and data clusters without version negotiation.</p>
+     * <p>Detection: if first VInt &gt;= 0, legacy format (value is timeSeriesCount);
+     * if first VInt &lt; 0, versioned format ({@code -firstVInt} is the serial version,
+     * read encoding byte next). This is self-describing so it works across coordinator
+     * and data clusters without version negotiation.</p>
      *
      * @param in the stream input to read from
      * @throws IOException if an I/O error occurs during reading
@@ -441,15 +435,17 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         if (firstValue >= 0) {
             // Legacy format: firstValue is the timeSeriesCount
             this.data = DecodedData.readFromLegacy(in, firstValue);
-        } else if (firstValue == WIRE_FORMAT_VERSION_1) {
-            // Versioned format: read encoding byte to dispatch
+        } else {
+            // Versioned format: -firstValue is the serial version (currently only CURRENT_SERIAL_VERSION=1)
+            int resolvedVersion = -firstValue;
+            if (resolvedVersion != CURRENT_SERIAL_VERSION) {
+                throw new IOException("Unknown wire format version: " + resolvedVersion);
+            }
             Encoding encoding = Encoding.fromId(in.readByte());
             this.data = switch (encoding) {
                 case NONE -> DecodedData.readFrom(in);
                 case XOR -> CompressedData.readFrom(in);
             };
-        } else {
-            throw new IOException("Unknown wire format version: " + (-firstValue));
         }
     }
 

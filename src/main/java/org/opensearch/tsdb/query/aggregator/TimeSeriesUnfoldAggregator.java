@@ -314,23 +314,16 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
             // decompressed path where decodeSamples(minTimestamp, maxTimestamp) only
             // returns in-range samples.
             long queryMaxExclusive = theoreticalMaxTimestamp + 1;
-            if (compressedChunks.size() == 1) {
-                // Fast path: closed-index chunks always produce a single chunk per doc
-                if (!compressedChunks.get(0).overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
-                    return;
+            List<CompressedChunk> filtered = new ArrayList<>(compressedChunks.size());
+            for (CompressedChunk chunk : compressedChunks) {
+                if (chunk.overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
+                    filtered.add(chunk);
                 }
-            } else {
-                List<CompressedChunk> filtered = new ArrayList<>(compressedChunks.size());
-                for (CompressedChunk chunk : compressedChunks) {
-                    if (chunk.overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
-                        filtered.add(chunk);
-                    }
-                }
-                if (filtered.isEmpty()) {
-                    return;
-                }
-                compressedChunks = filtered;
             }
+            if (filtered.isEmpty()) {
+                return;
+            }
+            compressedChunks = filtered;
 
             int chunkCount = compressedChunks.size();
             executionStats.totalChunkCount += chunkCount;
