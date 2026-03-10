@@ -215,11 +215,11 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
 
         // Test with sequential processing
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.sequentialOnly());
-        InternalAggregation sequentialResult = sumStage.reduce(aggregations, true);
+        InternalAggregation sequentialResult = sumStage.reduce(aggregations, true, ignored -> {});
 
         // Test with parallel processing
         AbstractGroupingSampleStage.setParallelConfig(ParallelProcessingConfig.alwaysParallel());
-        InternalAggregation parallelResult = sumStage.reduce(aggregations, true);
+        InternalAggregation parallelResult = sumStage.reduce(aggregations, true, ignored -> {});
 
         // Compare results
         TimeSeriesProvider seqProvider = (TimeSeriesProvider) sequentialResult;
@@ -435,7 +435,7 @@ public class AbstractGroupingSampleStageParallelTests extends OpenSearchTestCase
             TimeSeries firstTimeSeries,
             boolean isFinalReduce
         ) {
-            return reduceGrouped(aggregations, firstAgg, firstTimeSeries, isFinalReduce);
+            return reduceGrouped(aggregations, firstAgg, firstTimeSeries, isFinalReduce, ignored -> {});
         }
     }
 }
