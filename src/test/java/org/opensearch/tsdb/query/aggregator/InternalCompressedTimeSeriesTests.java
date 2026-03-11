@@ -86,7 +86,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(compressedChunk),
             labels,
             1000L,
-            3000L,
+            4000L,
             1000L,
             "test-alias"
         );
@@ -136,7 +136,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             ),
             labels,
             1000L,
-            6000L,
+            7000L,
             1000L,
             "multi-chunk-series"
         );
@@ -173,7 +173,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(chunk1.bytes(), Encoding.XOR, 1000L, 2000L)),
             labels,
             1000L,
-            4000L,
+            5000L,
             1000L,
             null
         );
@@ -182,7 +182,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(chunk2.bytes(), Encoding.XOR, 3000L, 4000L)),
             labels,
             1000L,
-            4000L,
+            5000L,
             1000L,
             null
         );
@@ -294,7 +294,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(xorChunk.bytes(), Encoding.XOR, 2000L, 3000L)),
             labels,
             2000L,
-            3000L,
+            4000L,
             1000L,
             null
         );
@@ -459,7 +459,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(chunk1.bytes(), Encoding.XOR, 1000L, 2000L)),
             labels,
             1000L,
-            10000L,
+            11000L,
             1000L,
             null
         );
@@ -468,7 +468,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(chunk2.bytes(), Encoding.XOR, 5000L, 6000L)),
             labels,
             1000L,
-            10000L,
+            11000L,
             1000L,
             null
         );
@@ -477,7 +477,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             List.of(new CompressedChunk(chunk3.bytes(), Encoding.XOR, 9000L, 10000L)),
             labels,
             1000L,
-            10000L,
+            11000L,
             1000L,
             null
         );
@@ -514,7 +514,7 @@ public class InternalCompressedTimeSeriesTests extends OpenSearchTestCase {
             byte[] bytes = xorChunk.bytes();
             CompressedChunk chunk = new CompressedChunk(bytes, Encoding.XOR, i * 1000L, (i * 1000L) + 500);
             Labels labels = ByteLabels.fromMap(Map.of("idx", String.valueOf(i)));
-            result.add(new CompressedTimeSeries(List.of(chunk), labels, i * 1000L, (i * 1000L) + 500, 500L, null));
+            result.add(new CompressedTimeSeries(List.of(chunk), labels, i * 1000L, (i * 1000L) + 1000, 500L, null));
         }
         return result;
     }

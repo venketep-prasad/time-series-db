@@ -108,20 +108,17 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     }
 
     /**
-     * Sealed interface representing encoded time series data.
+     * Sealed interface representing time series data in its wire format.
      * Each encoding type has its own implementation for encoding-specific logic.
      */
-    private sealed interface EncodedData permits DecodedData, CompressedData {
+    private sealed interface WireData permits DecodedData, CompressedData {
         Encoding getEncoding();
 
         List<TimeSeries> decode();
 
-        /** Returns the raw compressed list when encoding is XOR; empty when NONE. Used to merge without decoding on data node (CSS). */
-        List<CompressedTimeSeries> getCompressedTimeSeries();
-
         void writeTo(StreamOutput out) throws IOException;
 
-        boolean dataEquals(EncodedData other);
+        boolean dataEquals(WireData other);
 
         int dataHashCode();
 
@@ -131,7 +128,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     /**
      * Decoded time series data (NONE encoding).
      */
-    private static final class DecodedData implements EncodedData {
+    private static final class DecodedData implements WireData {
         private final List<TimeSeries> timeSeriesList;
         private final UnaryPipelineStage reduceStage;
 
@@ -148,11 +145,6 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         @Override
         public List<TimeSeries> decode() {
             return timeSeriesList;
-        }
-
-        @Override
-        public List<CompressedTimeSeries> getCompressedTimeSeries() {
-            return List.of();
         }
 
         @Override
@@ -199,7 +191,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         }
 
         @Override
-        public boolean dataEquals(EncodedData other) {
+        public boolean dataEquals(WireData other) {
             if (!(other instanceof DecodedData that)) return false;
             return timeSeriesListEquals(timeSeriesList, that.timeSeriesList)
                 && Objects.equals(
@@ -241,7 +233,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     /**
      * XOR-compressed time series data (XOR encoding).
      */
-    private static final class CompressedData implements EncodedData {
+    private static final class CompressedData implements WireData {
         private final List<CompressedTimeSeries> compressedTimeSeries;
 
         CompressedData(List<CompressedTimeSeries> compressedTimeSeries) {
@@ -258,7 +250,6 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
             return decodeCompressedTimeSeries(compressedTimeSeries);
         }
 
-        @Override
         public List<CompressedTimeSeries> getCompressedTimeSeries() {
             return compressedTimeSeries;
         }
@@ -280,7 +271,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         }
 
         @Override
-        public boolean dataEquals(EncodedData other) {
+        public boolean dataEquals(WireData other) {
             if (!(other instanceof CompressedData that)) return false;
             return Objects.equals(compressedTimeSeries, that.compressedTimeSeries);
         }
@@ -310,25 +301,27 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
                 List<CompressedTimeSeries> compressedGroup = entry.getValue();
 
                 // All series in the group share the same query-derived time range and step
-                // (set from the aggregator's minTimestamp/theoreticalMaxTimestamp in collectCompressed)
+                // (set from the aggregator's minTimestamp/maxTimestamp in collectCompressed)
                 CompressedTimeSeries first = compressedGroup.get(0);
                 long minTimestamp = first.getMinTimestamp();
-                long maxTimestamp = first.getMaxTimestamp();
+                long queryMaxTimestamp = first.getMaxTimestamp();
                 long step = first.getStep();
                 String alias = first.getAlias();
 
                 // Pool all chunks from the group and decode+align in one call.
-                // maxTimestamp+1 because decodeAndAlign uses exclusive upper bound.
+                // queryMaxTimestamp is the raw query end (exclusive), matching
+                // the decompressed path's decodeSamples(minTimestamp, maxTimestamp).
                 List<CompressedChunk> allChunks = new ArrayList<>();
                 for (CompressedTimeSeries series : compressedGroup) {
                     allChunks.addAll(series.getChunks());
                 }
                 try {
-                    SampleList samples = decodeAndAlign(allChunks, minTimestamp, maxTimestamp + 1, step);
+                    SampleList samples = decodeAndAlign(allChunks, minTimestamp, queryMaxTimestamp, step);
                     // Skip series with no data in the query range, consistent with the
                     // decompressed path which returns early when allSamples.isEmpty().
                     if (!samples.isEmpty()) {
-                        decodedTimeSeries.add(new TimeSeries(samples, labels, minTimestamp, maxTimestamp, step, alias));
+                        long alignedMax = TimeSeries.calculateAlignedMaxTimestamp(minTimestamp, queryMaxTimestamp, step);
+                        decodedTimeSeries.add(new TimeSeries(samples, labels, minTimestamp, alignedMax, step, alias));
                     }
                 } catch (IOException e) {
                     throw new RuntimeException("Failed to decode compressed chunks for series: " + labels, e);
@@ -368,7 +361,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         }
     }
 
-    private final EncodedData data;
+    private final WireData data;
     private static final SampleMerger MERGE_HELPER = new SampleMerger(SampleMerger.DeduplicatePolicy.ANY_WINS);
 
     /**
@@ -396,7 +389,7 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     }
 
     /** Private constructor for creating InternalTimeSeries with specific encoded data. */
-    private InternalTimeSeries(String name, EncodedData data, Map<String, Object> metadata) {
+    private InternalTimeSeries(String name, WireData data, Map<String, Object> metadata) {
         super(name, metadata);
         this.data = data;
     }
@@ -606,10 +599,10 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
         Map<Labels, List<CompressedTimeSeries>> byLabels = new HashMap<>();
         for (InternalAggregation agg : aggregations) {
             InternalTimeSeries its = (InternalTimeSeries) agg;
-            List<CompressedTimeSeries> list = its.getCompressedTimeSeries();
-            if (list.isEmpty()) {
+            if (!(its.data instanceof CompressedData compressed)) {
                 continue;
             }
+            List<CompressedTimeSeries> list = compressed.getCompressedTimeSeries();
             for (CompressedTimeSeries cts : list) {
                 byLabels.computeIfAbsent(cts.getLabels(), k -> new ArrayList<>()).add(cts);
             }
@@ -642,11 +635,16 @@ public class InternalTimeSeries extends InternalAggregation implements TimeSerie
     }
 
     /**
-     * Returns raw compressed time series when encoding is XOR; empty list when NONE.
-     * For internal reduce only (e.g. mergeCompressedWithoutDecoding).
+     * Returns the raw compressed time series list.
+     * Only valid when encoding is XOR; throws if called on decoded data.
      */
     List<CompressedTimeSeries> getCompressedTimeSeries() {
-        return data.getCompressedTimeSeries();
+        if (data instanceof CompressedData compressed) {
+            return compressed.getCompressedTimeSeries();
+        }
+        throw new IllegalStateException(
+            "getCompressedTimeSeries() called on non-compressed InternalTimeSeries (encoding=" + getEncoding() + ")"
+        );
     }
 
     /**

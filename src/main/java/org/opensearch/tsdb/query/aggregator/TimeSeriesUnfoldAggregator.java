@@ -309,14 +309,14 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                 return;
             }
 
-            // Filter to chunks that overlap the query time range. Chunks entirely outside
-            // [minTimestamp, maxTimestamp] carry no useful data, consistent with the
-            // decompressed path where decodeSamples(minTimestamp, maxTimestamp) only
-            // returns in-range samples.
-            long queryMaxExclusive = theoreticalMaxTimestamp + 1;
+            // Filter to chunks that overlap the query time range [minTimestamp, maxTimestamp).
+            // Use maxTimestamp (raw query end) as the exclusive upper bound, matching the
+            // decompressed path where decodeSamples(minTimestamp, maxTimestamp) returns
+            // in-range samples. Raw samples between theoreticalMaxTimestamp and maxTimestamp
+            // can still align down to valid step boundaries during decoding.
             List<CompressedChunk> filtered = new ArrayList<>(compressedChunks.size());
             for (CompressedChunk chunk : compressedChunks) {
-                if (chunk.overlapsTimeRange(minTimestamp, queryMaxExclusive)) {
+                if (chunk.overlapsTimeRange(minTimestamp, maxTimestamp)) {
                     filtered.add(chunk);
                 }
             }
@@ -353,7 +353,7 @@ public class TimeSeriesUnfoldAggregator extends BucketsAggregator {
                     new ArrayList<>(compressedChunks),
                     labels,
                     minTimestamp,
-                    theoreticalMaxTimestamp,
+                    maxTimestamp,
                     step,
                     null
                 );
